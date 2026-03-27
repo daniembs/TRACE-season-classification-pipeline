@@ -134,10 +134,7 @@ An SOP with the exact config adjustments required to run that dataset successful
 
 ## Citation
 
-If you use this code, please cite the manuscript and this repository release.
-
-Manuscript citation:
-> Minikaev, D., Sihi, D., Reed, S. C., & Wood, T. E. Submitted. A Four-Stage Framework for Analytical Season Classification in Humid Tropical Forests: Case study in the Luquillo Experimental Forest, Puerto Rico. *Agricultural and Forest Meteorology*.
+If you use this code, please cite this repository release.
 
 Repository citation:
 > Minikaev, D. 2026. Season Classification Pipeline (Version 1.0.0) [R 4.5.1]. GitHub.
