@@ -1,8 +1,7 @@
 # =============================================================================
-# config.R — Shared Pipeline Configuration
+# config_TRACE.R — TRACE Pipeline Configuration
 # =============================================================================
-# Central configuration for the seasonal classification pipeline.
-# Edit this file for your site and dataset. All stage scripts source it.
+# Central configuration for the seasonal classification pipeline in the TRACE experimental site.
 # =============================================================================
 
 # =============================================================================
@@ -11,59 +10,62 @@
 
 PROJECT_DIR <- tryCatch(
   normalizePath(dirname(sys.frame(1)$ofile), winslash = "/", mustWork = TRUE),
-  error = function(e) normalizePath(".", winslash = "/", mustWork = TRUE)
-)
+  error = function(e) normalizePath(".", winslash = "/", mustWork = TRUE))
 
 DIR_STAGE_1 <- "output_STAGE_1"
 DIR_STAGE_2 <- "output_STAGE_2"
 DIR_STAGE_3 <- "output_STAGE_3"
 DIR_STAGE_4 <- "output_STAGE_4"
 
-# Set monthly climate csv name  (Year, Month, driver columns)
-CLIMATE_CSV  <- file.path(PROJECT_DIR, "CLIM.csv")
-# Set monthly ecological csv name (Year, Month, response columns)
-RESPONSE_CSV <- file.path(PROJECT_DIR, "RESPONSE.csv")
-# Set response variable in RESPONSE_CSV containing the monthly ecological response
-RESPONSE_COL <- "response_variable"
+# Monthly climate (Year, Month, driver columns)
+CLIMATE_CSV  <- file.path(PROJECT_DIR, "CLIM_TRACE.csv")
+# Monthly ecological data (Year, Month, response columns)
+RESPONSE_CSV <- file.path(PROJECT_DIR, "RESPONSE_TRACE.csv")
+# Column in RESPONSE_CSV containing the monthly ecological response
+RESPONSE_COL <- "log_flux"
 
 # =============================================================================
 # 2. CLIMATE DRIVER METADATA
 # =============================================================================
-# One row per candidate driver. Controls polarity and season labelling
-# throughout all stages (adjust/add/remove drivers as necessary).
+# One row per candidate driver. Controls polarity and season labeling
+# throughout all stages.
 #
-# Set driver names (must match the climate CSV exactly).
-# Set season limits (Dry or Wet, TRUE or FALSE):
-# high_is_dry = TRUE  for variables that increase under drier conditions.
-# high_is_dry = FALSE for variables that increase under wetter conditions.
+#   driver      Column name in CLIMATE_CSV
+#   high_is_dry TRUE  → high values = dry (e.g., CWD, VPD)
+#               FALSE → high values = wet (e.g., SPEI, Rain)
+#   label_low   Season label for low-value months
+#   label_high  Season label for high-value months
+#   label_mid   Season label for the middle bin (k = 3 only)
 
 DRIVER_META <- data.frame(
-  driver      = c("DRIVER_1", "DRIVER_2", "DRIVER_3"),
-  high_is_dry = c(TRUE/FALSE,      TRUE/FALSE,   TRUE/FALSE,    TRUE/FALSE),
-  label_low   = c("Dry/Wet",     "Dry/Wet",   "Dry/Wet"),
-  label_high  = c("Dry/Wet",     "Dry/Wet",   "Dry/Wet"),
-  label_mid   = c("Transition", "Transition", "Transition"),
-  stringsAsFactors = FALSE)
+  driver      = c("SPEI",        "CWD",        "Rain_roll"),
+  high_is_dry = c(FALSE,         TRUE,          FALSE),
+  label_low   = c("Dry",         "Wet",         "Dry"),
+  label_high  = c("Wet",         "Dry",         "Wet"),
+  label_mid   = c("Transition",  "Transition",  "Transition"),
+  stringsAsFactors = FALSE
+)
 
 # =============================================================================
 # 3. STAGE 1 — Season Candidate Parameters
 # =============================================================================
 
-# Set Baseline period for climatological thresholds (adjust as necessary for your dataset)
-BASELINE_START <- 0000
-BASELINE_END   <- 0000
+# Baseline period for climatological thresholds.
+BASELINE_START <- 1995
+BASELINE_END   <- 2015
 
-# Set driver names and standard thresholds according to literature or prior local knowledge.
+# Standard (literature-backed) thresholds: driver → k → cut-point(s)
 STD_THRESHOLDS <- list(
-  DRIVER_1 = list(
-    two   = list(t = 0.0),
-    three = list(t1 = 0.0, t2 = 0.0)),
-  DRIVER_2 = list(
-    two   = list(t = 0.0),
-    three = list(t1 = 0.0, t2 = 0.0)),
-  DRIVER_3 = list(
-    two   = list(t = 0.0),
-    three = list(t1 = 0.0, t2 = 0.0)))
+  SPEI = list(
+    two   = list(t = 0),                   # < 0 Dry, >= 0 Wet
+    three = list(t1 = -1, t2 = 1)),        # < -1 Dry, [-1,1) Trans, >= 1 Wet
+  CWD = list(
+    two   = list(t = 0),                   # = 0 Wet, > 0 Dry
+    three = list(t1 = 0, t2 = 20)),        # = 0 Wet, (0,20] Trans, > 20 Dry
+  Rain_roll = list(
+    two   = list(t = 300),                 # < 300 Dry, >= 300 Wet
+    three = list(t1 = 180, t2 = 300))      # < 180 Dry, [180,300) Trans, >= 300 Wet
+)
 
 # Screening thresholds
 S1_MIN_PCT_ASSIGNED <- 90   # Min fraction of months assigned a label
@@ -74,13 +76,14 @@ S1_MIN_BIN_N_3S     <- 18L    # Min months in smallest bin, k = 3 (~1.5 yr)
 # 4. STAGE 2 — Segmented Regression Parameters
 # =============================================================================
 
-# Set initial breakpoint guesses (should be rough but plausible).
-# psi1 and psi2 are used for the k = 3 segmented fits.
+# Segmentation drivers with initial breakpoint guesses and axis labels.
+# psi1/psi2: rough estimates of where the response changes slope.
 SEG_DRIVERS <- data.frame(
-  driver = c("DRIVER_1", "DRIVER_1", "DRIVER_1"),
-  psi1   = c(0.0,      0.0,   0.0),
-  psi2   = c(0.0,       0.0,   0.0),
-  stringsAsFactors = FALSE)
+  driver = c("Rain_roll",   "CWD", "SPEI"),
+  psi1   = c(300,            10,            -1),
+  psi2   = c(600,            30,             0),
+  stringsAsFactors = FALSE
+)
 
 MIN_MONTHS_FOR_SEG <- 45     # Minimum months for segmented regression
 BOOT_B_SEG         <- 300    # Bootstrap iterations for breakpoint CI

@@ -110,7 +110,7 @@ The folder `test_data/` contains synthetic test data and one separate SOP with t
 - `test_data/CLIM_test_alt_1990_2025.csv`
 - `test_data/RESPONSE_test_alt_2019_2025.csv`
 - `test_data/SOP_TestData_ConfigAdjustment.docx`
-- `config_testdata_example.R`
+- `config_testdata.R`
 
 ## Code availability
 
@@ -137,10 +137,11 @@ An SOP with the exact config adjustments required to run that dataset successful
 If you use this code, please cite the manuscript and this repository release.
 
 Manuscript citation:
-> Minikaev, D., Sihi, D., Reed, S. C., & Wood, T. E. Submitted. A four-stage pipeline for objective season classification in humid tropical forests: case study in the Luquillo Experimental Forest, Puerto Rico. *Agricultural and Forest Meteorology*.
+> Minikaev, D., Sihi, D., Reed, S. C., & Wood, T. E. Submitted. A Four-Stage Framework for Analytical Season Classification in Humid Tropical Forests: Case study in the Luquillo Experimental Forest, Puerto Rico. *Agricultural and Forest Meteorology*.
 
 Repository citation:
-> Minikaev, D. 2026. TRACE-season-classification-pipeline (Version 1.0.0) [R 4.5.1]. GitHub.
+> Minikaev, D. 2026. Season Classification Pipeline (Version 1.0.0) [R 4.5.1]. GitHub.
+> https://github.com/usdanfs/TRACE-season-classification-pipeline.git.
 
 ## License
 

@@ -1,29 +1,17 @@
 # =============================================================================
-# STAGE 3 — Decision Ranking and Bootstrap Stability (Climate-Only Pipeline)
+# STAGE 3 — Climate-Only Decision Ranking and Bootstrap Stability
 # =============================================================================
-#   Rank Stage 1 candidates retained by Stage 2 using a two-tier weighted
-#   composite score, then assess rank stability via year-block bootstrap
-#   and weight sensitivity analysis.
-#
-# Scoring tiers (weighted rank-aggregation):
-#   Tier 1 — Climate structure (60%): month consistency, class balance,
-#            entropy, switching rate. Full baseline record.
-#   Tier 2 — Internal robustness (40%): std vs quantile threshold-method
-#            agreement (BSA_min, normalized conditional entropy).
-#
-# Bootstrap design:
-#   Year-block resampling (B iterations). Climate structure metrics are
-#   fixed (properties of the full classification). Std/quantile agreement
-#   is resampled across full-climate year blocks.
+# Rank retained candidates using climate structure and internal robustness only.
+# This is the climate-only analogue of the full-pipeline Stage 4.
 #
 # Inputs:
-#   Stage 1 RDS: screened_tbl.rds, season_long.rds
-#   Stage 2 RDS: stage2_candidates_retained.rds
+#   Stage 1: screened_tbl.rds, season_long.rds, threshold_tbl.rds
+#   Stage 2: stage2_stage1_candidates_retained.rds
 #
 # Outputs (output_dir/tables/):
-#   - decision_table_final.csv      Full decision table with bootstrap ranks
-#   - bootstrap_rank_summary.csv    Rank stability summary
-#   - weight_sensitivity.csv        Weight-sweep robustness check
+#   - decision_table_final.csv
+#   - bootstrap_rank_summary.csv
+#   - weight_sensitivity.csv
 # =============================================================================
 
 suppressPackageStartupMessages({
@@ -33,7 +21,8 @@ suppressPackageStartupMessages({
   library(lubridate)
 })
 
-source("config_climate_only.R")
+CONFIG_FILE <- Sys.getenv("SEASON_CONFIG", unset = "config_climate_only.R")
+source(CONFIG_FILE)
 set.seed(GLOBAL_SEED)
 
 output_dir <- stage_dir(3)
@@ -44,13 +33,10 @@ dir.create(tab_dir, showWarnings = FALSE, recursive = TRUE)
 # 1. LOAD DATA
 # =============================================================================
 
-screened_tbl <- readRDS(file.path(stage_dir(1), "screened_tbl.rds"))
-season_long  <- readRDS(file.path(stage_dir(1), "season_long.rds"))
-retained     <- readRDS(file.path(stage_dir(2), "stage2_candidates_retained.rds"))
-
-# =============================================================================
-# 2. APPLY STAGE 2 GATE
-# =============================================================================
+screened_tbl  <- readRDS(file.path(stage_dir(1), "screened_tbl.rds"))
+season_long   <- readRDS(file.path(stage_dir(1), "season_long.rds"))
+threshold_tbl <- readRDS(file.path(stage_dir(1), "threshold_tbl.rds"))
+retained      <- readRDS(file.path(stage_dir(2), "stage2_stage1_candidates_retained.rds"))
 
 base_tbl <- screened_tbl %>%
   semi_join(retained %>% dplyr::select(candidate_id), by = "candidate_id") %>%
@@ -60,7 +46,7 @@ base_tbl <- screened_tbl %>%
          method       = as.character(method))
 
 # =============================================================================
-# 3. HELPER FUNCTIONS
+# 2. HELPER FUNCTIONS
 # =============================================================================
 
 kappa_safe <- function(tab) {
@@ -115,8 +101,11 @@ rank01 <- function(x, higher_better = TRUE) {
 info_metrics_from_tab <- function(tab) {
   tab <- as.matrix(tab); n <- sum(tab)
   if (!is.finite(n) || n <= 1)
-    return(tibble(MI = NA_real_, nH1_given_2 = NA_real_,
-                  nH2_given_1 = NA_real_, H1_given_2 = NA_real_, H2_given_1 = NA_real_))
+    return(tibble(MI = NA_real_,
+                  H1_given_2 = NA_real_,
+                  H2_given_1 = NA_real_,
+                  nH1_given_2 = NA_real_,
+                  nH2_given_1 = NA_real_))
   Pij <- tab / n; Pi <- rowSums(Pij); Pj <- colSums(Pij)
   H <- function(p) { p <- p[p > 0]; -sum(p * log(p)) }
   Hi <- H(Pi); Hj <- H(Pj)
@@ -126,11 +115,11 @@ info_metrics_from_tab <- function(tab) {
       if (Pij[i, j] > 0) MI <- MI + Pij[i, j] * log(Pij[i, j] / (Pi[i] * Pj[j]))
   H1g2 <- Hi - MI
   H2g1 <- Hj - MI
-  tibble(MI            = MI,
-         H1_given_2    = H1g2,
-         H2_given_1    = H2g1,
-         nH1_given_2   = if (Hi > 0) H1g2 / Hi else NA_real_,
-         nH2_given_1   = if (Hj > 0) H2g1 / Hj else NA_real_)
+  tibble(MI = MI,
+         H1_given_2 = H1g2,
+         H2_given_1 = H2g1,
+         nH1_given_2 = if (Hi > 0) H1g2 / Hi else NA_real_,
+         nH2_given_1 = if (Hj > 0) H2g1 / Hj else NA_real_)
 }
 
 safe_tier_mean <- function(...) {
@@ -144,10 +133,6 @@ weighted_score <- function(tiers, wts) {
   sum(tiers[ok] * wts[ok]) / sum(wts[ok])
 }
 
-# =============================================================================
-# 4. THRESHOLD-METHOD ROBUSTNESS (std vs quantile agreement)
-# =============================================================================
-
 std_quant_agreement <- function(sl) {
   wt_tbl <- if ("w" %in% names(sl)) {
     sl %>% distinct(DateMonth, w)
@@ -159,39 +144,41 @@ std_quant_agreement <- function(sl) {
     filter(method %in% c("std", "quantile"))
   pairs <- meta %>%
     group_by(driver, k) %>%
-    summarise(cid_std = candidate_id[method == "std"][1],
-              cid_qtl = candidate_id[method == "quantile"][1],
-              .groups = "drop") %>%
+    summarise(
+      cid_std = candidate_id[method == "std"][1],
+      cid_qtl = candidate_id[method == "quantile"][1],
+      .groups = "drop"
+    ) %>%
     filter(!is.na(cid_std), !is.na(cid_qtl))
   pairs %>%
     mutate(metrics = map2(cid_std, cid_qtl, function(c1, c2) {
-      s1 <- sl %>%
-        filter(candidate_id == c1) %>%
-        dplyr::select(DateMonth, s_std = season)
-      s2 <- sl %>%
-        filter(candidate_id == c2) %>%
-        dplyr::select(DateMonth, s_qtl = season)
-      joined <- inner_join(s1, s2, by = "DateMonth") %>%
-        left_join(wt_tbl, by = "DateMonth")
+      s1 <- sl %>% filter(candidate_id == c1) %>% dplyr::select(DateMonth, s_std = season)
+      s2 <- sl %>% filter(candidate_id == c2) %>% dplyr::select(DateMonth, s_qtl = season)
+      joined <- inner_join(s1, s2, by = "DateMonth") %>% left_join(wt_tbl, by = "DateMonth")
       met <- label_agreement_bsa(joined$s_std, joined$s_qtl, w = joined$w)
       lv <- union(levels(factor(joined$s_std)), levels(factor(joined$s_qtl)))
-      tab <- xtabs(w ~ factor(s_std, levels = lv) + factor(s_qtl, levels = lv),
-                   data = joined)
+      tab <- xtabs(w ~ factor(s_std, levels = lv) + factor(s_qtl, levels = lv), data = joined)
       info <- info_metrics_from_tab(tab)
-      tibble(stage1_n = sum(joined$w, na.rm = TRUE),
-             kappa_std_quant = met$kappa,
-             bsa_min_std_quant = met$bsa_min,
-             pct_agree_std_quant = met$pct_agree,
-             discord_ci_hi_std_quant = met$discord_ci_hi,
-             nce_std_quant = mean(c(info$nH1_given_2, info$nH2_given_1), na.rm = TRUE))
+      tibble(
+        stage1_n = sum(joined$w, na.rm = TRUE),
+        kappa_std_quant = met$kappa,
+        bsa_min_std_quant = met$bsa_min,
+        pct_agree_std_quant = met$pct_agree,
+        discord_ci_hi_std_quant = met$discord_ci_hi,
+        nce_std_quant = mean(c(info$nH1_given_2, info$nH2_given_1), na.rm = TRUE)
+      )
     })) %>%
     unnest(metrics)
 }
 
+# =============================================================================
+# 3. INTERNAL ROBUSTNESS
+# =============================================================================
+
 sq_tbl <- std_quant_agreement(season_long)
 
 # =============================================================================
-# 5. ASSEMBLE DECISION SET AND COMPUTE SCORE
+# 4. ASSEMBLE DECISION SET AND SCORE
 # =============================================================================
 
 decision_set <- base_tbl %>%
@@ -200,26 +187,26 @@ decision_set <- base_tbl %>%
 decision_set <- decision_set %>%
   mutate(
     u_mean_month = rank01(mean_month_consistency, TRUE),
-    u_min_month  = rank01(min_month_consistency,  TRUE),
-    u_min_bin    = rank01(min_bin_prop,           TRUE),
-    u_switch     = rank01(mean_switch_per_year,   FALSE),
-    u_sq_bsa     = rank01(bsa_min_std_quant,      TRUE),
-    u_sq_ce      = rank01(nce_std_quant,          FALSE)) %>%
+    u_min_month  = rank01(min_month_consistency, TRUE),
+    u_min_bin    = rank01(min_bin_prop, TRUE),
+    u_switch     = rank01(mean_switch_per_year, FALSE),
+    u_sq_bsa     = rank01(bsa_min_std_quant, TRUE),
+    u_sq_ce      = rank01(nce_std_quant, FALSE)
+  ) %>%
   rowwise() %>%
   mutate(
     tier_climate = safe_tier_mean(u_mean_month, u_min_month, u_min_bin, u_switch),
     tier_robust  = safe_tier_mean(u_sq_bsa, u_sq_ce),
     climate_score = weighted_score(
       c(tier_climate, tier_robust),
-      c(W_CLIMATE, W_ROBUST)),
+      c(W_CLIMATE, W_ROBUST)
+    ),
     score_n_components = sum(!is.na(c(
       u_mean_month, u_min_month, u_min_bin, u_switch,
-      u_sq_bsa, u_sq_ce)))) %>%
+      u_sq_bsa, u_sq_ce
+    )))
+  ) %>%
   ungroup()
-
-# =============================================================================
-# 6. DECISION TABLE OUTPUT
-# =============================================================================
 
 decision_table <- decision_set %>%
   arrange(desc(climate_score), desc(bsa_min_std_quant)) %>%
@@ -228,57 +215,49 @@ decision_table <- decision_set %>%
     climate_score, score_n_components,
     mean_month_consistency, min_month_consistency,
     min_bin_prop, entropy_norm, mean_switch_per_year,
-    stage1_n, bsa_min_std_quant,
-    kappa_std_quant, nce_std_quant)
+    stage1_n, bsa_min_std_quant, kappa_std_quant, nce_std_quant
+  )
 
 # =============================================================================
-# 7. BOOTSTRAP RANK STABILITY
+# 5. BOOTSTRAP RANK STABILITY
 # =============================================================================
 
 years_full <- sort(unique(year(season_long$DateMonth)))
 
-boot_months <- function(src_tbl, years_vec) {
-  yrs <- sample(years_vec, length(years_vec), replace = TRUE)
-  map2_dfr(yrs, seq_along(yrs), ~{
-    src_tbl %>%
-      mutate(Year = year(DateMonth)) %>%
-      filter(Year == .x) %>%
-      mutate(.boot_block = .y)
-  })
+resample_years <- function(years, B = BOOT_N_RANK) {
+  replicate(B, sample(years, length(years), replace = TRUE), simplify = FALSE)
 }
 
-boot_once <- function() {
-  months_full_b <- boot_months(season_long, years_full)
-  full_w <- months_full_b %>% count(DateMonth, name = "w")
-  sq_b <- std_quant_agreement(
-    season_long %>% semi_join(full_w, by = "DateMonth") %>%
-      left_join(full_w, by = "DateMonth"))
-  decision_set %>%
-    dplyr::select(candidate_id, driver, k,
-                  mean_month_consistency, min_month_consistency,
-                  min_bin_prop, mean_switch_per_year) %>%
+boot_sets <- resample_years(years_full, B = BOOT_N_RANK)
+
+boot_ranks <- map_dfr(seq_along(boot_sets), function(bi) {
+  yb <- boot_sets[[bi]]
+  yfreq <- tibble(Year = yb) %>% count(Year, name = "w")
+  sl_b <- season_long %>%
+    mutate(Year = year(DateMonth)) %>%
+    inner_join(yfreq, by = "Year")
+  sq_b <- std_quant_agreement(sl_b)
+  ds_b <- base_tbl %>%
     left_join(sq_b, by = c("driver", "k")) %>%
     mutate(
       u_mean_month = rank01(mean_month_consistency, TRUE),
-      u_min_month  = rank01(min_month_consistency,  TRUE),
-      u_min_bin    = rank01(min_bin_prop,           TRUE),
-      u_switch     = rank01(mean_switch_per_year,   FALSE),
-      u_sq_bsa     = rank01(bsa_min_std_quant,      TRUE),
-      u_sq_ce      = rank01(nce_std_quant,          FALSE)) %>%
+      u_min_month  = rank01(min_month_consistency, TRUE),
+      u_min_bin    = rank01(min_bin_prop, TRUE),
+      u_switch     = rank01(mean_switch_per_year, FALSE),
+      u_sq_bsa     = rank01(bsa_min_std_quant, TRUE),
+      u_sq_ce      = rank01(nce_std_quant, FALSE)
+    ) %>%
     rowwise() %>%
     mutate(
       tier_climate = safe_tier_mean(u_mean_month, u_min_month, u_min_bin, u_switch),
       tier_robust  = safe_tier_mean(u_sq_bsa, u_sq_ce),
-      climate_score = weighted_score(
-        c(tier_climate, tier_robust),
-        c(W_CLIMATE, W_ROBUST))) %>%
+      climate_score = weighted_score(c(tier_climate, tier_robust), c(W_CLIMATE, W_ROBUST))
+    ) %>%
     ungroup() %>%
-    arrange(desc(climate_score)) %>%
-    mutate(rank = row_number()) %>%
-    dplyr::select(candidate_id, rank)
-}
-
-boot_ranks <- map_dfr(seq_len(BOOT_N_RANK), ~boot_once() %>% mutate(iter = .x))
+    arrange(desc(climate_score), desc(bsa_min_std_quant)) %>%
+    mutate(rank = row_number(), boot = bi)
+  ds_b %>% dplyr::select(boot, candidate_id, rank, climate_score)
+})
 
 rank_stats <- boot_ranks %>%
   group_by(candidate_id) %>%
@@ -287,48 +266,45 @@ rank_stats <- boot_ranks %>%
   arrange(desc(p_top1))
 
 top_probs <- boot_ranks %>%
-  filter(rank == 1) %>% count(candidate_id) %>% mutate(prob = n / BOOT_N_RANK)
+  filter(rank == 1) %>%
+  count(candidate_id) %>%
+  mutate(prob = n / BOOT_N_RANK)
 
 boot_summary <- tibble(
   N_BOOT               = BOOT_N_RANK,
   top_candidate        = top_probs$candidate_id[1],
   top_probability      = top_probs$prob[1],
   runnerup_probability = if (nrow(top_probs) >= 2) top_probs$prob[2] else NA_real_,
-  decision_entropy     = -sum(top_probs$prob * log(top_probs$prob)))
+  decision_entropy     = -sum(top_probs$prob * log(top_probs$prob))
+)
 
 decision_table_final <- decision_table %>%
   left_join(rank_stats, by = "candidate_id") %>%
   arrange(desc(p_top1), desc(climate_score))
 
 # =============================================================================
-# 8. WEIGHT SENSITIVITY ANALYSIS
+# 6. WEIGHT SENSITIVITY
 # =============================================================================
 
-weight_grid <- tibble(w_clim = seq(0.30, 0.70, by = 0.10)) %>%
-  mutate(w_rob = 1 - w_clim)
+weight_grid <- expand_grid(
+  w_climate = seq(0.30, 0.90, by = 0.05),
+  w_robust  = seq(0.10, 0.70, by = 0.05)
+) %>%
+  filter(abs(w_climate + w_robust - 1) < 1e-9)
 
 weight_sensitivity <- weight_grid %>%
-  pmap_dfr(function(w_clim, w_rob) {
-    scored <- decision_set %>%
-      rowwise() %>%
-      mutate(cs = weighted_score(
-        c(tier_climate, tier_robust),
-        c(w_clim, w_rob))) %>%
-      ungroup() %>% arrange(desc(cs))
-    tibble(top_candidate = scored$candidate_id[1],
-           top_score     = scored$cs[1],
-           w_climate     = w_clim,
-           w_robust      = w_rob,
-           gap_to_second = scored$cs[1] - scored$cs[2])
-  })
-
-message("Stage 3 complete. Winner: ", boot_summary$top_candidate,
-        " (P(rank 1) = ", round(boot_summary$top_probability, 3), ").",
-        " Weight sensitivity: ", n_distinct(weight_sensitivity$top_candidate),
-        " unique winner(s) across ", nrow(weight_grid), " weight combos.")
+  mutate(res = pmap(list(w_climate, w_robust), function(wc, wr) {
+    d <- decision_set %>%
+      rowwise() %>% mutate(score = weighted_score(c(tier_climate, tier_robust), c(wc, wr))) %>% ungroup()
+    ord <- d %>% arrange(desc(score), desc(bsa_min_std_quant))
+    tibble(top_candidate = ord$candidate_id[1],
+           top_score = ord$score[1],
+           gap_to_second = if (nrow(ord) > 1) ord$score[1] - ord$score[2] else NA_real_)
+  })) %>%
+  unnest(res)
 
 # =============================================================================
-# 9. SAVE OUTPUTS
+# 7. SAVE OUTPUTS
 # =============================================================================
 
 write.csv(decision_table_final %>%
@@ -340,9 +316,7 @@ write.csv(decision_table_final %>%
               stage1_n, bsa_min_std_quant, nce_std_quant, kappa_std_quant),
           file.path(tab_dir, "decision_table_final.csv"), row.names = FALSE)
 
-write.csv(weight_sensitivity %>%
-            dplyr::select(w_climate, w_robust,
-                          top_candidate, top_score, gap_to_second),
+write.csv(weight_sensitivity,
           file.path(tab_dir, "weight_sensitivity.csv"), row.names = FALSE)
 
 write.csv(boot_summary,

@@ -14,14 +14,15 @@
 # 1. PATHS AND DATA
 # =============================================================================
 
-PROJECT_DIR <- normalizePath(".../SEASON_CLASSIFICATION",
-  winslash = "/", mustWork = TRUE)
+PROJECT_DIR <- tryCatch(
+  normalizePath(dirname(sys.frame(1)$ofile), winslash = "/", mustWork = TRUE),
+  error = function(e) normalizePath(".", winslash = "/", mustWork = TRUE))
 
 DIR_STAGE_1 <- "output_STAGE_1_climate_only_candidates"
 DIR_STAGE_2 <- "output_STAGE_2_climate_only_validation"
 DIR_STAGE_3 <- "output_STAGE_3_climate_only_ranking"
 
-# Monthly climate (Year, Month, driver columns)
+# Set monthly climate csv name  (Year, Month, driver columns)
 CLIMATE_CSV <- file.path(PROJECT_DIR, "CLIM.csv")
 
 # =============================================================================
@@ -30,47 +31,43 @@ CLIMATE_CSV <- file.path(PROJECT_DIR, "CLIM.csv")
 # One row per candidate driver. Controls polarity and season labelling
 # throughout all stages (adjust/add/remove drivers as necessary).
 #
-#   driver      Column name in CLIMATE_CSV
-#   high_is_dry TRUE  → high values = dry (e.g., CWD, VPD)
-#               FALSE → high values = wet (e.g., SPEI, Rain)
-#   label_low   Season label for low-value months
-#   label_high  Season label for high-value months
-#   label_mid   Season label for the middle bin (k = 3 only)
+# Set driver names (must match the climate CSV exactly).
+# Set season limits (Dry or Wet, TRUE or FALSE):
+# high_is_dry = TRUE  for variables that increase under drier conditions.
+# high_is_dry = FALSE for variables that increase under wetter conditions.
 
 DRIVER_META <- data.frame(
-  driver      = c("SPEI",        "CWD",        "Rain_roll"),
-  high_is_dry = c(FALSE,         TRUE,          FALSE),
-  label_low   = c("Dry",         "Wet",         "Dry"),
-  label_high  = c("Wet",         "Dry",         "Wet"),
-  label_mid   = c("Transition",  "Transition",  "Transition"),
-  stringsAsFactors = FALSE
-)
+  driver      = c("DRIVER_1", "DRIVER_2", "DRIVER_3"),
+  high_is_dry = c(TRUE/FALSE,      TRUE/FALSE,   TRUE/FALSE,    TRUE/FALSE),
+  label_low   = c("Dry/Wet",     "Dry/Wet",   "Dry/Wet"),
+  label_high  = c("Dry/Wet",     "Dry/Wet",   "Dry/Wet"),
+  label_mid   = c("Transition", "Transition", "Transition"),
+  stringsAsFactors = FALSE)
 
 # =============================================================================
 # 3. STAGE 1 — Season Candidate Parameters
 # =============================================================================
 
-# Baseline period for climatological thresholds (adjust as necessary for your dataset)
-BASELINE_START <- 1995
-BASELINE_END   <- 2015
+# Set Baseline period for climatological thresholds (adjust as necessary for your dataset)
+BASELINE_START <- 0000
+BASELINE_END   <- 0000
 
-# Standard (literature-backed) thresholds: driver → k → cut-point(s)
+# Set driver names and standard thresholds according to literature or prior local knowledge.
 STD_THRESHOLDS <- list(
-  SPEI = list(
-    two   = list(t = 0),                   # < 0 Dry, >= 0 Wet
-    three = list(t1 = -1, t2 = 1)),        # < -1 Dry, [-1,1) Trans, >= 1 Wet
-  CWD = list(
-    two   = list(t = 0),                   # = 0 Wet, > 0 Dry
-    three = list(t1 = 0, t2 = 20)),        # = 0 Wet, (0,20] Trans, > 20 Dry
-  Rain_roll = list(
-    two   = list(t = 300),                 # < 300 Dry, >= 300 Wet
-    three = list(t1 = 180, t2 = 300))      # < 180 Dry, [180,300) Trans, >= 300 Wet
-)
+  DRIVER_1 = list(
+    two   = list(t = 0.0),
+    three = list(t1 = 0.0, t2 = 0.0)),
+  DRIVER_2 = list(
+    two   = list(t = 0.0),
+    three = list(t1 = 0.0, t2 = 0.0)),
+  DRIVER_3 = list(
+    two   = list(t = 0.0),
+    three = list(t1 = 0.0, t2 = 0.0)))
 
 # Screening thresholds
-S1_MIN_PCT_ASSIGNED <- 90    # Min fraction of months assigned a label
-S1_MIN_BIN_N_2S     <- 24L   # Min months in smallest bin, k = 2 (~2 yr)
-S1_MIN_BIN_N_3S     <- 18L   # Min months in smallest bin, k = 3 (~1.5 yr)
+S1_MIN_PCT_ASSIGNED <- 90   # Min fraction of months assigned a label
+S1_MIN_BIN_N_2S     <- 24L    # Min months in smallest bin, k = 2 (~2 yr)
+S1_MIN_BIN_N_3S     <- 18L    # Min months in smallest bin, k = 3 (~1.5 yr)
 
 # =============================================================================
 # 4. STAGE 2 — Stress-Test Parameters
@@ -83,7 +80,7 @@ VALIDATION_START <- NA    # e.g., 2016
 VALIDATION_END   <- NA    # e.g., 2024
 
 # Hard screens (climate-only analogue of full-pipeline Stage 3 structural filters)
-S2_MIN_PCT_ASSIGNED   <- 90    # Min assignment completeness within validation window
+S2_MIN_PCT_ASSIGNED   <- 0.90    # Min assignment completeness within validation window
 S2_MIN_SEASON_PROP    <- 0.10  # Min proportion per season level within validation window
 S2_MEAN_MONTH_CONS    <- 0.55  # Min calendar-month consistency within validation window
 S2_MIN_BLOCK_PROP     <- 0.05  # Min season proportion within any block

@@ -23,9 +23,8 @@ suppressPackageStartupMessages({
 # ---------------------------------------------------------------------------
 # 0.  CONFIGURATION — edit ONE of the two lines below
 # ---------------------------------------------------------------------------
-source("config.R")              # Full pipeline (4 stages)
-# source("config_climate_only.R") # Climate-only pipeline (3 stages)
-
+CONFIG_FILE <- Sys.getenv("SEASON_CONFIG", unset = "config.R")
+source(CONFIG_FILE)
 set.seed(GLOBAL_SEED)
 
 # Detect final ranking stage automatically
