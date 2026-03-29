@@ -23,9 +23,9 @@
 # =============================================================================
 
 suppressPackageStartupMessages({
-  library(tidyverse)
-  library(lubridate)
-  library(zoo)
+  library(tidyverse)   # >= 2.0.0; dplyr >= 1.1.0 required for .by= in summarise
+  library(lubridate)   # >= 1.9.0
+  library(zoo)         # >= 1.8.0; used for ordered index support
 })
 
 CONFIG_FILE <- Sys.getenv("SEASON_CONFIG", unset = "config.R")
@@ -166,18 +166,32 @@ build_candidate <- function(df, driver, k_seasons = 2,
     if (length(xb) < 24) {
       meta$t1 <- NA_real_
     } else {
+      # For high_is_dry drivers (e.g. CWD), exact zeros represent "no deficit"
+      # and cluster at the floor of the distribution.  Replacing 0 with a small
+      # positive value (1e-6) prevents the median from collapsing to 0 when
+      # >50% of baseline months are zero, while still placing the threshold at
+      # effectively 0 for practical classification purposes.
       xb_q <- if (dm$high_is_dry) ifelse(xb == 0, 1e-6, xb) else xb
       meta$t1 <- suppressWarnings(as.numeric(quantile(xb_q, 0.5, na.rm = TRUE)))
     }
     out <- assign_2season(x, t = meta$t1, low = labels[1], high = labels[2])
   } else {
     if (dm$high_is_dry) {
+      # t1 = median of all baseline values (including zeros, which represent
+      # "no deficit" months and correctly anchor the lower boundary).
+      # t2 = 66th percentile of strictly positive baseline values only; this
+      # places the Dry/Transition boundary within the deficit-bearing months,
+      # separating moderate from high water-stress months.  The 0.66 value is a
+      # fixed scientific choice matching the ~2/3 split used for the
+      # non-high_is_dry case (tertiles); change with caution and document if
+      # adjusted for a specific site.
       xb_pos <- xb[xb > 0]
       meta$t1 <- if (length(xb) >= 24)
         suppressWarnings(as.numeric(quantile(xb, 0.50, na.rm = TRUE))) else NA_real_
       meta$t2 <- if (length(xb_pos) >= 24)
         suppressWarnings(as.numeric(quantile(xb_pos, 0.66, na.rm = TRUE))) else NA_real_
     } else {
+      # t1/t2 = tertiles (33rd/67th percentiles) of baseline: equal-sized bins.
       q <- get_q(xb, probs = c(1/3, 2/3))
       meta$t1 <- q[1]; meta$t2 <- q[2]
     }
@@ -383,4 +397,10 @@ write.csv(removed_tbl %>%
 saveRDS(screened_tbl,   file.path(output_dir, "screened_tbl.rds"))
 saveRDS(threshold_tbl,  file.path(output_dir, "threshold_tbl.rds"))
 saveRDS(season_long,    file.path(output_dir, "season_long.rds"))
+
+# Session info — saved once here (Stage 1 always runs first) so the full R
+# version, OS, and every loaded package version are recorded alongside outputs.
+# This is the primary reproducibility artefact for the pipeline run.
+writeLines(capture.output(sessionInfo()),
+           file.path(output_dir, "session_info.txt"))
 # =============================================================================

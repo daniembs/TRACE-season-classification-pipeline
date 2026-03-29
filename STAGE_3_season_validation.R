@@ -22,8 +22,8 @@
 # =============================================================================
 
 suppressPackageStartupMessages({
-  library(tidyverse)
-  library(lubridate)
+  library(tidyverse)   # >= 2.0.0; dplyr >= 1.1.0 required for .by= in summarise
+  library(lubridate)   # >= 1.9.0
 })
 
 CONFIG_FILE <- Sys.getenv("SEASON_CONFIG", unset = "config.R")

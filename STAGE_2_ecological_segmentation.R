@@ -25,14 +25,24 @@
 # =============================================================================
 
 suppressPackageStartupMessages({
-  library(tidyverse)
-  library(lubridate)
-  library(zoo)
+  library(tidyverse)   # >= 2.0.0
+  library(lubridate)   # >= 1.9.0
+  library(zoo)         # >= 1.8.0
+  # segmented >= 2.0.0 required: psi extraction via summary(seg)$psi[,"Est."]
+  # changed in 1.4; davies.test() moved to the package namespace in 1.6.
+  # Results (breakpoint location, CI width) can differ across minor versions
+  # due to convergence-algorithm updates — record packageVersion("segmented")
+  # alongside outputs.
   library(segmented)
 })
 
 CONFIG_FILE <- Sys.getenv("SEASON_CONFIG", unset = "config.R")
 source(CONFIG_FILE)
+# Seed note: set.seed() is called once here for the global sequence, and again
+# inside each map() lambda below (once per driver) so that every driver's
+# bootstrap starts from the same seed regardless of evaluation order or the
+# number of drivers.  This makes per-driver results reproducible in isolation
+# but means all drivers share the same initial RNG state for their bootstraps.
 set.seed(GLOBAL_SEED)
 
 output_dir  <- stage_dir(2)
@@ -187,7 +197,7 @@ fit_seg1 <- function(df, xvar, yvar = "RESPONSE_COL", psi_init = NULL, B = 300) 
   delta_aic  <- aic_linear - aic_seg
   # Davies test for breakpoint existence (handles nuisance parameter)
   davies_p <- tryCatch({
-    dt <- segmented::davies.test(lm0, seg.Z = ~xj, k = 10)
+    dt <- segmented::davies.test(lm0, seg.Z = ~xj, k = DAVIES_K)
     dt$p.value
   }, error = function(e) NA_real_)
   b1 <- NA_real_
@@ -248,7 +258,7 @@ fit_seg2 <- function(df, xvar, yvar = "RESPONSE_COL", psi_init = NULL, B = 300) 
   delta_aic  <- aic_linear - aic_seg
   # Davies test for breakpoint existence (handles nuisance parameter)
   davies_p <- tryCatch({
-    dt <- segmented::davies.test(lm0, seg.Z = ~xj, k = 10)
+    dt <- segmented::davies.test(lm0, seg.Z = ~xj, k = DAVIES_K)
     dt$p.value
   }, error = function(e) NA_real_)
   b1 <- NA_real_; b2 <- NA_real_

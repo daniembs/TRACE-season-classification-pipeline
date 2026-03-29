@@ -116,6 +116,13 @@ W_VERIFY  <- 0.20    # Tier 3: External verification (Stage 1 vs Stage 2)
 
 BOOT_N_RANK <- 300   # Year-block bootstrap replicates
 
+DAVIES_K                    <- 10
+S4_NEAR_CONSTANT_THRESHOLD  <- 0.95
+SENS_W_CLIMATE_RANGE        <- c(0.30, 0.70)
+SENS_W_ROBUST_RANGE         <- c(0.10, 0.40)
+SENS_W_VERIFY_RANGE         <- c(0.10, 0.40)
+SENS_W_STEP                 <- 0.10
+
 # =============================================================================
 # 7. GLOBAL SEED
 # =============================================================================

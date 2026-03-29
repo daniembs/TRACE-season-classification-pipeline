@@ -27,10 +27,10 @@
 # =============================================================================
 
 suppressPackageStartupMessages({
-  library(dplyr)
-  library(tidyr)
-  library(purrr)
-  library(lubridate)
+  library(dplyr)       # >= 1.1.0
+  library(tidyr)       # >= 1.3.0
+  library(purrr)       # >= 1.0.0
+  library(lubridate)   # >= 1.9.0
 })
 
 CONFIG_FILE <- Sys.getenv("SEASON_CONFIG", unset = "config.R")
@@ -225,7 +225,7 @@ stage2_best_match <- function(cid, drv, kk) {
              stage2_discord_ci_hi = met$discord_ci_hi,
              bsa_min_ssa = met$bsa_min, kappa_ssa = met$kappa,
              stage2_pmax = pmax2,
-             stage2_near_constant = is.finite(pmax2) && pmax2 > 0.95)
+             stage2_near_constant = is.finite(pmax2) && pmax2 > S4_NEAR_CONSTANT_THRESHOLD)
     }) %>% ungroup() %>%
     arrange(desc(kappa_ssa), desc(bsa_min_ssa), desc(stage2_n)) %>%
     slice(1) %>%
@@ -436,7 +436,7 @@ recompute_boot_components <- function(months_full_b, months_response_b) {
                  stage2_discord_ci_hi = met$discord_ci_hi,
                  bsa_min_ssa = met$bsa_min, kappa_ssa = met$kappa,
                  stage2_pmax = pmax2,
-                 stage2_near_constant = is.finite(pmax2) && pmax2 > 0.95)
+                 stage2_near_constant = is.finite(pmax2) && pmax2 > S4_NEAR_CONSTANT_THRESHOLD)
         }) %>% ungroup() %>%
         arrange(desc(kappa_ssa), desc(bsa_min_ssa), desc(stage2_n)) %>%
         slice(1) %>% mutate(stage2_reason = "ok") %>%
@@ -512,10 +512,10 @@ decision_table_final <- decision_table %>%
 # =============================================================================
 
 weight_grid <- expand.grid(
-  w_clim = seq(0.3, 0.7, by = 0.1),
-  w_rob  = seq(0.1, 0.4, by = 0.1)) %>%
+  w_clim = seq(SENS_W_CLIMATE_RANGE[1], SENS_W_CLIMATE_RANGE[2], by = SENS_W_STEP),
+  w_rob  = seq(SENS_W_ROBUST_RANGE[1],  SENS_W_ROBUST_RANGE[2],  by = SENS_W_STEP)) %>%
   mutate(w_ver = 1 - w_clim - w_rob) %>%
-  filter(w_ver >= 0.1, w_ver <= 0.4)
+  filter(w_ver >= SENS_W_VERIFY_RANGE[1], w_ver <= SENS_W_VERIFY_RANGE[2])
 
 weight_sensitivity <- weight_grid %>%
   pmap_dfr(function(w_clim, w_rob, w_ver) {

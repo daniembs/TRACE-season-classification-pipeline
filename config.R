@@ -114,6 +114,24 @@ W_VERIFY  <- 0.20    # Tier 3: External verification (Stage 1 vs Stage 2)
 
 BOOT_N_RANK <- 300   # Year-block bootstrap replicates
 
+# Number of sub-intervals for Davies' test for a breakpoint (segmented package).
+# Higher values give a more precise p-value but increase compute time.
+# Results can differ across values; record this alongside output for reproducibility.
+DAVIES_K <- 10
+
+# Proportion threshold above which a Stage 2 ecological candidate's dominant
+# season class is flagged as near-constant (too imbalanced for meaningful
+# label-agreement metrics). Applied in Stage 4 stage2_best_match.
+S4_NEAR_CONSTANT_THRESHOLD <- 0.95
+
+# Weight-sensitivity grid: bounds and step size for the tier-weight sweep in
+# Stage 4.  The grid covers all (W_CLIMATE, W_ROBUST, W_VERIFY) combinations
+# that sum to 1 and fall within these ranges.
+SENS_W_CLIMATE_RANGE <- c(0.30, 0.70)
+SENS_W_ROBUST_RANGE  <- c(0.10, 0.40)
+SENS_W_VERIFY_RANGE  <- c(0.10, 0.40)   # applied as a filter, not a sweep axis
+SENS_W_STEP          <- 0.10
+
 # =============================================================================
 # 7. GLOBAL SEED
 # =============================================================================
