@@ -47,13 +47,53 @@ dir.create(tab_dir, showWarnings = FALSE, recursive = TRUE)
 monthly_clim <- read.csv(CLIMATE_CSV, stringsAsFactors = FALSE) %>%
   mutate(DateMonth = as.Date(sprintf("%d-%02d-15", Year, Month)))
 
-monthly_response <- read.csv(RESPONSE_CSV, stringsAsFactors = FALSE) %>%
+# Validate RESPONSE_CSV has the expected response column before attempting rename.
+# Missing column gives a cryptic tidyselect error with no pointer to config.
+resp_raw <- read.csv(RESPONSE_CSV, stringsAsFactors = FALSE)
+if (!RESPONSE_COL %in% names(resp_raw))
+  stop("RESPONSE_COL '", RESPONSE_COL, "' not found in RESPONSE_CSV. ",
+       "Available columns: ", paste(names(resp_raw), collapse = ", "))
+
+monthly_response <- resp_raw %>%
   mutate(DateMonth = as.Date(sprintf("%d-%02d-15", Year, Month))) %>%
   rename(RESPONSE_COL = all_of(RESPONSE_COL)) %>%
   left_join(monthly_clim %>%
               dplyr::select(DateMonth, Year, Month, all_of(DRIVER_META$driver)),
             by = c("DateMonth", "Year", "Month")) %>%
   arrange(DateMonth)
+rm(resp_raw)
+
+# No date overlap means all segmented fits will receive empty data and silently
+# return null_results; the ecological regime candidates will be all-NA.
+overlap_n <- sum(monthly_response$DateMonth %in% monthly_clim$DateMonth &
+                   is.finite(monthly_response$RESPONSE_COL))
+if (overlap_n == 0)
+  stop("No overlapping dates with finite response values between RESPONSE_CSV and CLIMATE_CSV. ",
+       sprintf("Response spans %d--%d; Climate spans %d--%d.",
+               min(monthly_response$Year, na.rm = TRUE),
+               max(monthly_response$Year, na.rm = TRUE),
+               min(monthly_clim$Year, na.rm = TRUE),
+               max(monthly_clim$Year, na.rm = TRUE)))
+
+# Warn if total overlapping months are below the segmented-regression minimum.
+if (overlap_n < MIN_MONTHS_FOR_SEG)
+  warning(sprintf(
+    "Only %d months overlap between RESPONSE_CSV and CLIMATE_CSV (MIN_MONTHS_FOR_SEG = %d). ",
+    overlap_n, MIN_MONTHS_FOR_SEG),
+    "All segmented fits will return null results and breakpoint_supported = FALSE.")
+
+# Validate SEG_DRIVERS: all drivers must exist in DRIVER_META (so driver_info()
+# works) and must be present as columns in monthly_response (so fits can run).
+missing_seg_meta <- setdiff(seg_drivers$driver, DRIVER_META$driver)
+if (length(missing_seg_meta) > 0)
+  stop("SEG_DRIVERS contains driver(s) not in DRIVER_META: ",
+       paste(missing_seg_meta, collapse = ", "))
+
+missing_seg_col <- setdiff(seg_drivers$driver, names(monthly_response))
+if (length(missing_seg_col) > 0)
+  stop("SEG_DRIVERS driver(s) not found as columns in monthly_response after joining with climate data: ",
+       paste(missing_seg_col, collapse = ", "),
+       ". Check that these drivers are present in CLIMATE_CSV.")
 
 # =============================================================================
 # 2. HELPER FUNCTIONS
@@ -121,6 +161,13 @@ boot_ci <- function(x, min_ok = 10) {
 
 fit_seg1 <- function(df, xvar, yvar = "RESPONSE_COL", psi_init = NULL, B = 300) {
   d0 <- df %>% filter(is.finite(.data[[xvar]]), is.finite(.data[[yvar]]))
+  # A near-constant response has zero variance: lm() fits with 0 residual df and
+  # segmented() will either crash or return a meaningless breakpoint.
+  if (nrow(d0) >= 2 && sd(d0[[yvar]], na.rm = TRUE) < .Machine$double.eps^0.5) {
+    warning(sprintf("fit_seg1: '%s' has near-zero variance for driver '%s'. Skipping fit.",
+                    yvar, xvar))
+    d0 <- d0[0L, ]   # force null_result path via nrow < MIN_MONTHS_FOR_SEG
+  }
   null_result <- list(
     ok = FALSE, b1 = NA_real_,
     aic_linear = NA_real_, aic_seg = NA_real_, delta_aic = NA_real_,
@@ -175,6 +222,11 @@ fit_seg1 <- function(df, xvar, yvar = "RESPONSE_COL", psi_init = NULL, B = 300) 
 
 fit_seg2 <- function(df, xvar, yvar = "RESPONSE_COL", psi_init = NULL, B = 300) {
   d0 <- df %>% filter(is.finite(.data[[xvar]]), is.finite(.data[[yvar]]))
+  if (nrow(d0) >= 2 && sd(d0[[yvar]], na.rm = TRUE) < .Machine$double.eps^0.5) {
+    warning(sprintf("fit_seg2: '%s' has near-zero variance for driver '%s'. Skipping fit.",
+                    yvar, xvar))
+    d0 <- d0[0L, ]
+  }
   null_result <- list(
     ok = FALSE, b1 = NA_real_, b2 = NA_real_,
     aic_linear = NA_real_, aic_seg = NA_real_, delta_aic = NA_real_,

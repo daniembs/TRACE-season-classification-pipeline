@@ -63,6 +63,19 @@ stage1_long <- season_long %>%
   semi_join(response_months, by = "DateMonth") %>%
   dplyr::select(candidate_id, driver, k, method, DateMonth, season)
 
+# Empty stage1_long means the ecological window has no overlap with the climate
+# record. All drop-rule metrics would be NA, and is.finite(NA) = FALSE causes
+# every candidate to silently pass all filters with no valid data.
+if (nrow(stage1_long) == 0)
+  stop("No Stage 1 season labels fall within the ecological measurement window. ",
+       sprintf("Response window: %s--%s. ",
+               format(min(response_months$DateMonth), "%Y-%m"),
+               format(max(response_months$DateMonth), "%Y-%m")),
+       sprintf("Climate record: %s--%s. ",
+               format(min(season_long$DateMonth), "%Y-%m"),
+               format(max(season_long$DateMonth), "%Y-%m")),
+       "Check that RESPONSE_CSV dates overlap with CLIMATE_CSV.")
+
 stage2_long <- ecological_regime_long_seg %>%
   mutate(DateMonth = as.Date(DateMonth)) %>%
   semi_join(response_months, by = "DateMonth") %>%
@@ -111,12 +124,22 @@ make_year_blocks <- function(dates, block_years = 2) {
   blocks
 }
 
-# Cohen's κ from a contingency table
+# Cohen's κ from a contingency table.
+# Squarifies the table over the union of row/column labels before computing,
+# so non-square tables (divergent label sets) are handled correctly rather than
+# silently computing diag() on the shorter diagonal.
 kappa_cohen <- function(tab) {
-  n <- sum(tab)
-  if (n == 0) return(NA_real_)
-  po <- sum(diag(tab)) / n
-  pe <- sum(rowSums(tab) * colSums(tab)) / n^2
+  tab <- as.matrix(tab)
+  n   <- sum(tab)
+  if (!is.finite(n) || n == 0) return(NA_real_)
+  all_lvls <- union(rownames(tab), colnames(tab))
+  sq <- matrix(0L, length(all_lvls), length(all_lvls),
+               dimnames = list(all_lvls, all_lvls))
+  sq[rownames(tab), colnames(tab)] <- tab
+  rs <- rowSums(sq); cs <- colSums(sq)
+  if (sum(rs > 0) <= 1 || sum(cs > 0) <= 1) return(NA_real_)
+  po <- sum(diag(sq)) / n
+  pe <- sum(rs * cs) / n^2
   if (!is.finite(pe) || isTRUE(all.equal(1 - pe, 0))) return(NA_real_)
   (po - pe) / (1 - pe)
 }

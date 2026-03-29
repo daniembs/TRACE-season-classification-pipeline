@@ -79,6 +79,18 @@ base_tbl <- base_tbl %>%
   left_join(n_seasons_eco_tbl, by = "candidate_id") %>%
   filter(n_seasons_eco >= 2)
 
+# With only one candidate, rank01() returns all NAs (n_ok <= 1 branch), making
+# all tier scores and climate_score NA. The bootstrap winner is then indeterminate.
+# Warn early so the user understands why the output may look degenerate.
+if (nrow(base_tbl) == 0)
+  stop("No candidates remain after Stage 3 filtering and ecological-window check. ",
+       "Review Stage 3 filter_results.csv to diagnose which screens eliminated all candidates.")
+
+if (nrow(base_tbl) == 1)
+  warning("Only 1 candidate passed Stage 3. rank01() requires >=2 candidates to produce ",
+          "non-NA scores; all tier utilities will be NA and ranking is trivially the sole ",
+          "remaining candidate: ", base_tbl$candidate_id[1])
+
 # =============================================================================
 # 3. HELPER FUNCTIONS
 # =============================================================================
@@ -518,7 +530,8 @@ weight_sensitivity <- weight_grid %>%
            w_climate     = w_clim,
            w_robust      = w_rob,
            w_verify      = w_ver,
-           gap_to_second = scored$cs[1] - scored$cs[2])
+           gap_to_second = if (nrow(scored) >= 2) scored$cs[1] - scored$cs[2]
+                           else NA_real_)
   })
 
 message("Stage 4 complete. Winner: ", boot_summary$top_candidate,

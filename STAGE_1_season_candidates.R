@@ -50,8 +50,37 @@ missing_drv <- setdiff(DRIVER_META$driver, names(monthly_clim))
 if (length(missing_drv) > 0)
   stop("Drivers missing from climate CSV: ", paste(missing_drv, collapse = ", "))
 
+# Warn on duplicate Year-Month rows: metrics are computed per calendar month and
+# duplicate rows silently inflate counts and distort class-balance metrics.
+dup_ym <- monthly_clim %>% count(Year, Month) %>% filter(n > 1)
+if (nrow(dup_ym) > 0)
+  warning(sprintf(
+    "Climate CSV has %d duplicate Year-Month combination(s) (e.g. %d-%02d). ",
+    nrow(dup_ym), dup_ym$Year[1], dup_ym$Month[1]),
+    "Season metrics may be inflated. Deduplicate the CSV before running.")
+
 baseline_months <- monthly_clim %>%
   filter(Year >= BASELINE_START, Year <= BASELINE_END)
+
+# An empty baseline means all quantile thresholds will be NA, producing only
+# degenerate candidates and a silent all-NA failure downstream.
+if (nrow(baseline_months) == 0)
+  stop(sprintf(
+    "Baseline period %d--%d produced no rows. ",
+    BASELINE_START, BASELINE_END),
+    sprintf("Climate CSV spans %d--%d. Adjust BASELINE_START / BASELINE_END.",
+            min(monthly_clim$Year, na.rm = TRUE),
+            max(monthly_clim$Year, na.rm = TRUE)))
+
+# Fewer than 24 baseline months makes quantile thresholds statistically unreliable.
+n_baseline_finite <- baseline_months %>%
+  dplyr::select(all_of(DRIVER_META$driver)) %>%
+  summarise(across(everything(), ~sum(is.finite(.)))) %>%
+  unlist()
+if (any(n_baseline_finite < 24))
+  warning("Baseline period has <24 finite values for driver(s): ",
+          paste(names(n_baseline_finite)[n_baseline_finite < 24], collapse = ", "),
+          ". Quantile thresholds for these drivers will be NA (degenerate candidates).")
 
 # =============================================================================
 # 2. HELPER FUNCTIONS
@@ -284,7 +313,25 @@ screened_tbl <- validation_tbl %>%
 
 # Stop if all candidates fail screening
 if (nrow(screened_tbl) == 0) {
-  stop("Stage 1 screening removed all candidates. Review DRIVER_META, STD_THRESHOLDS, and the baseline period.")
+  fail_summary <- validation_tbl %>%
+    mutate(
+      min_bin_n     = round(min_bin_prop * n_assigned),
+      min_bin_n_req = if_else(k == 2, S1_MIN_BIN_N_2S, S1_MIN_BIN_N_3S),
+      fail_pct      = pct_assigned < S1_MIN_PCT_ASSIGNED,
+      fail_levels   = n_levels_used < k,
+      fail_bin      = min_bin_n < min_bin_n_req) %>%
+    summarise(
+      n_fail_pct    = sum(fail_pct),
+      n_fail_levels = sum(fail_levels),
+      n_fail_bin    = sum(fail_bin))
+  stop(sprintf(
+    "Stage 1 screening removed all %d candidate(s). ",
+    nrow(validation_tbl)),
+    sprintf("Failures: pct_assigned=%d, n_levels=%d, min_bin_n=%d. ",
+            fail_summary$n_fail_pct,
+            fail_summary$n_fail_levels,
+            fail_summary$n_fail_bin),
+    "Review DRIVER_META, STD_THRESHOLDS, and BASELINE_START/BASELINE_END.")
 }
 
 # Log removed candidates with failure reasons
