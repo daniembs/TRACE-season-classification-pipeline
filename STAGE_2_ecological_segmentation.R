@@ -311,7 +311,8 @@ fit_seg2 <- function(df, xvar, yvar = "RESPONSE_COL", psi_init = NULL, B = 300) 
        boot_sum = boot_sum, df0 = d0, seg_fit = seg0)
 }
 
-# --- Leave-one-year-out cross-validation RMSE ---
+# Leave-one-year-out cross-validation RMSE: a predictive diagnostic separate
+# from the in-sample AIC comparison, less sensitive to overfitting than ΔAIC.
 cv_seg_rmse <- function(df, xvar, k_breaks) {
   years <- sort(unique(df$Year))
   if (length(years) < 5) return(NA_real_)

@@ -368,7 +368,7 @@ filters_tbl <- screened_tbl %>%
   left_join(ecological_anova_flags,
             by = c("candidate_id", "driver", "k", "method")) %>%
   mutate(
-    # --- Drop rules ---
+    # Drop rules:
     fail_assignment = is.finite(pct_assigned_eco) &
       pct_assigned_eco < S3_MIN_PCT_ASSIGNED,
     fail_imbalance  = is.finite(min_bin_prop_eco) &
@@ -377,10 +377,10 @@ filters_tbl <- screened_tbl %>%
       mean_month_consistency_eco < S3_MEAN_MONTH_CONS,
     fail_block_imbalance = !is.na(any_block_extreme_imbalance) &
       any_block_extreme_imbalance,
-    # --- Flags ---
+    # Informational flags (never trigger a drop):
     flag_kappa_low = is.finite(kappa) & kappa < S3_FLAG_KAPPA_LOW,
     flag_align_far = !is.na(align_flag) & align_flag,
-    # --- Final ---
+    # Final drop decision:
     drop_candidate = fail_assignment | fail_imbalance | fail_calendar |
       (!is.na(fail_block_collapse) & fail_block_collapse) |
       fail_block_imbalance)
