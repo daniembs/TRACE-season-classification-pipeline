@@ -51,7 +51,7 @@ seg_drivers <- as_tibble(SEG_DRIVERS)
 dir.create(tab_dir, showWarnings = FALSE, recursive = TRUE)
 
 # =============================================================================
-# 1. LOAD DATA
+# 1. DATA INPUTS — load the ecological response and join with climate record
 # =============================================================================
 
 monthly_clim <- read.csv(CLIMATE_CSV, stringsAsFactors = FALSE) %>%
@@ -106,10 +106,13 @@ if (length(missing_seg_col) > 0)
        ". Check that these drivers are present in CLIMATE_CSV.")
 
 # =============================================================================
-# 2. HELPER FUNCTIONS
+# 2. SEGMENTATION UTILITIES — label assignment, jitter, bootstrap CI, and
+#    leave-one-year-out CV helpers used by the fitting functions below
 # =============================================================================
 
-# Assign season labels from breakpoint thresholds (polarity from DRIVER_META)
+# Converts ecological breakpoints to season factors using the same polarity
+# convention (lower_closed via high_is_dry) as Stage 1, so Stage 2 labels
+# are directly comparable to Stage 1 labels in the Stage 3 agreement tests.
 season_from_thresholds <- function(df, driver, k, t1, t2 = NA_real_) {
   x  <- df[[driver]]
   dm <- driver_info(driver)
@@ -140,7 +143,10 @@ season_from_thresholds <- function(df, driver, k, t1, t2 = NA_real_) {
   stop("k must be 2 or 3")
 }
 
-# Jitter tied x-values to aid segmented() convergence
+# segmented() can fail or return degenerate breakpoints when many x-values
+# are identical, because tied values create flat regions in the piecewise
+# likelihood surface. Minimal random jitter (< 1e-6 × SD) breaks ties
+# without meaningfully shifting any breakpoint estimate.
 jitter_if_tied <- function(x, frac = 1e-6) {
   x <- as.numeric(x)
   if (!all(is.finite(x))) return(x)
@@ -151,7 +157,10 @@ jitter_if_tied <- function(x, frac = 1e-6) {
   x
 }
 
-# Bootstrap CI from a numeric vector (95% percentile interval)
+# Percentile-based bootstrap CI for breakpoint stability. The percentile
+# method is preferred over SE-based intervals here because the bootstrap
+# distribution of breakpoints is often asymmetric; min_ok = 10 ensures
+# the CI is not reported when the bootstrap produced too few valid replicates.
 boot_ci <- function(x, min_ok = 10) {
   if (length(x) >= min_ok)
     c(median(x), quantile(x, 0.025), quantile(x, 0.975))
@@ -160,14 +169,16 @@ boot_ci <- function(x, min_ok = 10) {
 }
 
 # =============================================================================
-# 3. SEGMENTED REGRESSION FITTING
+# 3. FITTING FUNCTIONS — single- and double-breakpoint segmented regression
+#    with bootstrap; called once per driver in section 4 and again per
+#    leave-one-year-out fold in cv_seg_rmse
 # =============================================================================
-# fit_seg1: single breakpoint (k = 2 seasons)
-# fit_seg2: two breakpoints  (k = 3 seasons)
-#
-# Each returns: breakpoint estimate(s), AIC comparison, bootstrap CI,
-# the working data frame, and the fitted segmented object.
-# When B = 0 (during cross-validation), bootstrap is skipped.
+# fit_seg1 (k = 2) and fit_seg2 (k = 3) are kept as separate functions rather
+# than a single dispatcher so their null_result structures (which differ in the
+# number of bootstrap columns) can be typed explicitly without branching logic.
+# Each returns: breakpoint estimate(s), AIC comparison, bootstrap CI, the
+# working data frame, and the fitted segmented object.
+# When B = 0 (during cross-validation folds), bootstrap is skipped.
 
 fit_seg1 <- function(df, xvar, yvar = "RESPONSE_COL", psi_init = NULL, B = 300) {
   d0 <- df %>% filter(is.finite(.data[[xvar]]), is.finite(.data[[yvar]]))
@@ -226,7 +237,7 @@ fit_seg1 <- function(df, xvar, yvar = "RESPONSE_COL", psi_init = NULL, B = 300) 
   ci1   <- boot_ci(b1_ok)
   boot_sum <- tibble(b1_med = ci1[1], b1_lo = ci1[2], b1_hi = ci1[3],
                      n_boot_ok_1 = length(b1_ok))
-  list(ok = TRUE, b1 = b1, aic_linear = aic_linear, aic_seg = aic_seg,  davies_p = davies_p,
+  list(ok = TRUE, b1 = b1, aic_linear = aic_linear, aic_seg = aic_seg, davies_p = davies_p,
        delta_aic = delta_aic, boot_sum = boot_sum, df0 = d0, seg_fit = seg0)
 }
 
@@ -295,7 +306,7 @@ fit_seg2 <- function(df, xvar, yvar = "RESPONSE_COL", psi_init = NULL, B = 300) 
     b1_med = ci1[1], b1_lo = ci1[2], b1_hi = ci1[3],
     b2_med = ci2[1], b2_lo = ci2[2], b2_hi = ci2[3],
     n_boot_ok_1 = length(b1_ok), n_boot_ok_2 = length(b2_ok))
-  list(ok = TRUE, b1 = b1, b2 = b2,  davies_p = davies_p,
+  list(ok = TRUE, b1 = b1, b2 = b2, davies_p = davies_p,
        aic_linear = aic_linear, aic_seg = aic_seg, delta_aic = delta_aic,
        boot_sum = boot_sum, df0 = d0, seg_fit = seg0)
 }
@@ -332,10 +343,12 @@ cv_seg_rmse <- function(df, xvar, k_breaks) {
 }
 
 # =============================================================================
-# 4. FIT SEGMENTED REGRESSIONS (3 drivers × 2 k-levels = 6 fits)
+# 4. REGRESSION RUNS — fit all driver × k combinations and extract breakpoints
 # =============================================================================
 
 # k = 2: single breakpoint per driver
+# boot_sum here is a list-column extracted from each fit result; the local
+# variable named boot_sum inside fit_seg1/fit_seg2 is its source value.
 seg1_tbl <- seg_drivers %>%
   mutate(
     res      = map(driver, ~{ set.seed(GLOBAL_SEED); fit_seg1(monthly_response, .x, B = BOOT_B_SEG) }),
@@ -370,7 +383,8 @@ seg_tbl <- bind_rows(
     breakpoint_supported = pass_aic_gain | pass_davies)
 
 # =============================================================================
-# 5. BUILD ECOLOGICAL-REGIME SEASON LABELS FROM BREAKPOINTS
+# 5. ECOLOGICAL-REGIME LABELS — convert breakpoints to month-level season
+#    factors for cross-validation against Stage 1 labels in Stage 3
 # =============================================================================
 # Convert each breakpoint set into month-level season factors over the full
 # climate record, for cross-validation against Stage 1 labels in Stage 3.
@@ -404,7 +418,7 @@ ecological_regime_long <- ecological_regime_candidates %>%
   mutate(method = "segmented")
 
 # =============================================================================
-# 6. SAVE OUTPUTS
+# 6. OUTPUTS — write breakpoint tables and RDS handshakes for Stage 3
 # =============================================================================
 
 seg_tbl_flat <- seg_tbl %>% dplyr::select(where(~!is.list(.)))

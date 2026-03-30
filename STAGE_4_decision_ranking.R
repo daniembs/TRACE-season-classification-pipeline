@@ -42,7 +42,7 @@ tab_dir    <- file.path(output_dir, "tables")
 dir.create(tab_dir, showWarnings = FALSE, recursive = TRUE)
 
 # =============================================================================
-# 1. LOAD DATA
+# 1. DATA INPUTS — load all stage artefacts needed for composite ranking
 # =============================================================================
 
 screened_tbl   <- readRDS(file.path(stage_dir(1), "screened_tbl.rds"))
@@ -58,7 +58,8 @@ retained       <- readRDS(file.path(stage_dir(3), "stage3_stage1_candidates_reta
 response_months <- monthly_response %>% distinct(DateMonth)
 
 # =============================================================================
-# 2. APPLY STAGE 3 GATE
+# 2. STAGE 3 GATE — restrict to Stage 3 survivors; verify ecological-window
+#    label diversity before ranking proceeds
 # =============================================================================
 
 base_tbl <- screened_tbl %>%
@@ -92,7 +93,8 @@ if (nrow(base_tbl) == 1)
           "remaining candidate: ", base_tbl$candidate_id[1])
 
 # =============================================================================
-# 3. HELPER FUNCTIONS
+# 3. SCORING UTILITIES — agreement metrics, rank normalisation, entropy, and
+#    tier-score helpers used throughout sections 4–7 and the bootstrap
 # =============================================================================
 
 # Cohen's κ (handles non-square confusion matrices)
@@ -112,7 +114,10 @@ kappa_safe <- function(tab) {
   (po - pe) / (1 - pe)
 }
 
-# Wilson score interval for discord proportion
+# Wilson (not Wald) interval for the discord proportion: the upper bound
+# is used to compute BSA_min = 1 − CI_hi, a conservative agreement floor.
+# Wilson is preferred because Wald intervals can fall outside [0, 1] at
+# small n or near-zero discord rates, producing invalid BSA_min values.
 wilson_ci <- function(m, n, z = 1.96) {
   if (!is.finite(n) || n <= 0) return(c(lo = NA_real_, hi = NA_real_))
   p <- m / n
@@ -122,7 +127,11 @@ wilson_ci <- function(m, n, z = 1.96) {
   c(lo = center - half, hi = center + half)
 }
 
-# Binomial Score Agreement (BSA_min) with optional weighting
+# BSA_min = 1 − upper Wilson CI of discord proportion. Using the CI upper
+# bound rather than the point estimate makes the agreement score conservative:
+# a candidate only earns a high BSA_min when discord is consistently low
+# even accounting for sampling uncertainty. Optional weights allow the
+# bootstrap to apply multiplicity counts from year-block resampling.
 label_agreement_bsa <- function(a, b, w = NULL) {
   ok <- !is.na(a) & !is.na(b)
   a <- as.character(a[ok]); b <- as.character(b[ok])
@@ -139,7 +148,11 @@ label_agreement_bsa <- function(a, b, w = NULL) {
          kappa = kappa_safe(tab))
 }
 
-# Rank-to-[0,1] utility (1 = best)
+# Maps raw metric values to a [0, 1] utility scale (1 = best rank) so
+# that components with different units and ranges are commensurable before
+# being averaged into tier scores. Using fractional ranks rather than
+# min-max normalisation prevents a single outlier from compressing all
+# other candidates into a narrow band.
 rank01 <- function(x, higher_better = TRUE) {
   if (!higher_better) x <- -x
   r <- rank(x, ties.method = "average", na.last = "keep")
@@ -154,7 +167,11 @@ bin_from_cuts <- function(x, cuts) {
       labels = FALSE, right = TRUE)
 }
 
-# Mutual information metrics from a contingency table
+# Normalized conditional entropy (NCE) quantifies structural boundary
+# alignment independent of label identity. NCE = H(X|Y) / H(X) measures
+# the fraction of uncertainty in one labelling not resolved by the other;
+# lower NCE means the two cut-point sets produce nearly identical partitions.
+# Averaging nH1|2 and nH2|1 yields a symmetric measure.
 info_metrics_from_tab <- function(tab) {
   tab <- as.matrix(tab); n <- sum(tab)
   if (!is.finite(n) || n <= 1)
@@ -190,7 +207,8 @@ weighted_score <- function(tiers, wts) {
 }
 
 # =============================================================================
-# 4. STAGE 2 LABEL AGREEMENT (per Stage 1 candidate)
+# 4. ECOLOGICAL LABEL AGREEMENT — match each Stage 1 candidate to its Stage 2
+#    equivalent and compute BSA_min / κ over the shared ecological window
 # =============================================================================
 
 stage2_best_match <- function(cid, drv, kk) {
@@ -242,7 +260,9 @@ stage2_match_df <- base_tbl %>%
   unnest(stage2)
 
 # =============================================================================
-# 5. THRESHOLD-METHOD ROBUSTNESS (std vs quantile agreement)
+# 5. THRESHOLD-METHOD ROBUSTNESS — std vs. quantile label agreement across
+#    the full climate record; high agreement means the result is not sensitive
+#    to the choice of threshold source
 # =============================================================================
 
 std_quant_agreement <- function(sl) {
@@ -281,10 +301,11 @@ std_quant_agreement <- function(sl) {
     unnest(metrics)
 }
 
-sq_tbl <- std_quant_agreement(season_long)
+sq_tbl <- std_quant_agreement(season_long)   # sq = std/quantile agreement
 
 # =============================================================================
-# 6. STRUCTURAL SEGMENTATION ALIGNMENT (SSA)
+# 6. STRUCTURAL SEGMENTATION ALIGNMENT — NCE between Stage 1 threshold-bins
+#    and Stage 2 breakpoint-bins on the driver axis
 # =============================================================================
 # Bin the driver at Stage 1 thresholds and Stage 2 breakpoints independently,
 # then compute normalized conditional entropy between the two binnings.
@@ -323,7 +344,8 @@ ssa_tbl <- base_tbl %>%
   })
 
 # =============================================================================
-# 7. ASSEMBLE DECISION SET AND COMPUTE SCORE
+# 7. COMPOSITE SCORE ASSEMBLY — join all metric tables and compute the tiered
+#    weighted ranking score from sections 4–6
 # =============================================================================
 
 decision_set <- base_tbl %>%
@@ -359,7 +381,8 @@ decision_set <- decision_set %>%
   ungroup()
 
 # =============================================================================
-# 8. DECISION TABLE OUTPUT
+# 8. DECISION TABLE — arrange candidates by final score and select reporting
+#    columns; combined with bootstrap stats in section 9 for the final output
 # =============================================================================
 
 decision_table <- decision_set %>%
@@ -380,7 +403,8 @@ decision_table <- decision_set %>%
     ssa_reason, nce_ssa)
 
 # =============================================================================
-# 9. BOOTSTRAP RANK STABILITY
+# 9. RANK STABILITY — year-block bootstrap to assess how often the top-ranked
+#    candidate holds its position under resampling uncertainty
 # =============================================================================
 
 years_full <- sort(unique(year(season_long$DateMonth)))
@@ -508,7 +532,8 @@ decision_table_final <- decision_table %>%
   arrange(desc(p_top1), desc(climate_score))
 
 # =============================================================================
-# 10. WEIGHT SENSITIVITY ANALYSIS
+# 10. WEIGHT SENSITIVITY — sweep tier-weight grid to verify the winner does
+#     not depend on the specific W_CLIMATE / W_ROBUST / W_VERIFY values
 # =============================================================================
 
 weight_grid <- expand.grid(
@@ -540,7 +565,8 @@ message("Stage 4 complete. Winner: ", boot_summary$top_candidate,
         " unique winner(s) across ", nrow(weight_grid), " weight combos.")
 
 # =============================================================================
-# 11. SAVE OUTPUTS
+# 11. OUTPUTS — write final decision table, weight sensitivity, bootstrap
+#     summary, and RDS artefacts for post-pipeline visualisation
 # =============================================================================
 
 write.csv(decision_table_final %>%

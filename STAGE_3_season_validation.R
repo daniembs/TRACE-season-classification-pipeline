@@ -35,7 +35,7 @@ tab_dir    <- file.path(output_dir, "tables")
 dir.create(tab_dir, showWarnings = FALSE, recursive = TRUE)
 
 # =============================================================================
-# 1. LOAD DATA
+# 1. DATA INPUTS — load Stage 1 and Stage 2 artefacts plus the climate record
 # =============================================================================
 
 season_long               <- readRDS(file.path(stage_dir(1), "season_long.rds"))
@@ -56,7 +56,7 @@ monthly_response <- readRDS(file.path(stage_dir(2), "monthly_response.rds")) %>%
 response_months <- monthly_response %>% distinct(DateMonth)
 
 # =============================================================================
-# 2. RESTRICT TO ECOLOGICAL WINDOW
+# 2. ECOLOGICAL WINDOW — restrict labels to months covered by the response record
 # =============================================================================
 
 stage1_long <- season_long %>%
@@ -83,10 +83,13 @@ stage2_long <- ecological_regime_long_seg %>%
   dplyr::select(candidate_id, driver, k, method, DateMonth, season)
 
 # =============================================================================
-# 3. HELPER FUNCTIONS
+# 3. VALIDATION UTILITIES — class balance, calendar consistency, block
+#    partitioning, and κ helpers used by the stress tests and filter rules
 # =============================================================================
 
-# Class balance within a season vector
+# Checks whether any season level collapses below a meaningful proportion
+# within the ecological window, where sample sizes are smaller than in the
+# full climate record and imbalance is more likely to appear.
 balance_metrics <- function(season_vec) {
   tab <- table(droplevels(season_vec))
   if (sum(tab) == 0)
@@ -97,7 +100,10 @@ balance_metrics <- function(season_vec) {
          n_levels_used = length(tab))
 }
 
-# Calendar-month consistency
+# Within the ecological window, checks whether each calendar month maps
+# reliably to the same season label across years — the same diagnostic as
+# Stage 1 but applied to the shorter ecological record, where occasional
+# anomalous years can have a larger influence on the consistency score.
 month_consistency <- function(df, season_col = "season") {
   d <- df %>% filter(!is.na(.data[[season_col]]))
   if (nrow(d) == 0)
@@ -113,7 +119,10 @@ month_consistency <- function(df, season_col = "season") {
          min_month_consistency  = min(mm$max_prop))
 }
 
-# Partition dates into non-overlapping year blocks
+# Partitions the record into fixed-length year blocks so that the block
+# stability test is independent of inter-annual autocorrelation. Using
+# blocks rather than individual years avoids flagging candidates that simply
+# have one atypical year — the block must lose an entire season level to fail.
 make_year_blocks <- function(dates, block_years = 2) {
   yrs <- sort(unique(year(dates)))
   blocks <- list(); i <- 1
@@ -145,7 +154,8 @@ kappa_cohen <- function(tab) {
 }
 
 # =============================================================================
-# 4. STRESS TESTS — BLOCK STABILITY AND CALENDAR CONSISTENCY
+# 4. STRUCTURAL STRESS TESTS — block stability and calendar-month consistency
+#    within the ecological window; failures here trigger hard drops in section 8
 # =============================================================================
 
 year_blocks <- make_year_blocks(response_months$DateMonth, block_years = S3_BLOCK_YEARS)
@@ -178,7 +188,8 @@ calendar_consistency_eco <- stage1_long %>%
          min_month_consistency_eco  = min_month_consistency)
 
 # =============================================================================
-# 5. ECOLOGICAL DIFFERENTIATION (ANOVA)
+# 5. ECOLOGICAL DIFFERENTIATION — one-way ANOVA to test whether season levels
+#    correspond to distinct response distributions (informational only)
 # =============================================================================
 # One-way ANOVA of monthly ecological response grouped by season level.
 # Informational flag only — never triggers a drop.
@@ -244,7 +255,8 @@ ecological_anova_flags <- ecological_anova_summary %>%
             flag_low_omega_sq = is.finite(omega_sq) & omega_sq < S3_FLAG_OMEGA_SQ_LOW)
 
 # =============================================================================
-# 6. STAGE 1 vs STAGE 2 AGREEMENT (Validation Signal)
+# 6. THRESHOLD–BREAKPOINT LABEL AGREEMENT — κ between climate-threshold and
+#    ecological-breakpoint season labels over the shared ecological window
 # =============================================================================
 
 stage2_key <- stage2_long %>%
@@ -273,7 +285,8 @@ agreement_tbl <- stage1_long %>%
   unnest(metrics)
 
 # =============================================================================
-# 7. THRESHOLD vs BREAKPOINT ALIGNMENT (Validation Signal)
+# 7. THRESHOLD–BREAKPOINT POSITION ALIGNMENT — IQR-normalised distance between
+#    Stage 1 thresholds and Stage 2 breakpoints on the driver axis
 # =============================================================================
 
 stage2_breaks <- seg_tbl %>% transmute(driver, k, b1, b2)
@@ -294,7 +307,8 @@ alignment_tbl <- threshold_tbl %>%
     diff2_iqr  = if_else(k == 3, abs_diff_2 / iqr, NA_real_))
 
 # =============================================================================
-# 8. CONSERVATIVE FILTERING
+# 8. DROP-RULE APPLICATION — reject structurally pathological candidates;
+#    flag informational concerns without triggering drops
 # =============================================================================
 # Drop rules target structural pathologies only.
 
@@ -372,7 +386,7 @@ filters_tbl <- screened_tbl %>%
       fail_block_imbalance)
 
 # =============================================================================
-# 9. RETAINED CANDIDATES
+# 9. SURVIVOR SET — collect passing candidates for Stage 4 ranking
 # =============================================================================
 
 retained <- filters_tbl %>%
@@ -387,7 +401,7 @@ retained <- filters_tbl %>%
     anova_omega_sq, anova_p, kw_p, flag_low_omega_sq)
 
 # =============================================================================
-# 10. SAVE OUTPUTS
+# 10. OUTPUTS — write diagnostic tables and Stage 4 handshake RDS
 # =============================================================================
 
 write.csv(filters_tbl %>%
