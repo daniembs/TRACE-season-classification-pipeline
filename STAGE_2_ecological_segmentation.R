@@ -132,7 +132,7 @@ season_from_thresholds <- function(df, driver, k, t1, t2 = NA_real_) {
       return(factor(rep(NA_character_, nrow(df))))
     if (dm$high_is_dry)
       out <- case_when(!is.finite(x) ~ NA_character_,
-                       x <= t1 ~ dm$label_low, x < t2 ~ dm$label_mid,
+                       x <= t1 ~ dm$label_low, x <= t2 ~ dm$label_mid,
                        TRUE ~ dm$label_high)
     else
       out <- case_when(!is.finite(x) ~ NA_character_,
@@ -193,7 +193,7 @@ fit_seg1 <- function(df, xvar, yvar = "RESPONSE_COL", psi_init = NULL, B = 300) 
     ok = FALSE, b1 = NA_real_,
     aic_linear = NA_real_, aic_seg = NA_real_, delta_aic = NA_real_,
     boot_sum = tibble(b1_med = NA_real_, b1_lo = NA_real_,
-                      b1_hi = NA_real_, n_boot_ok_1 = 0L, davies_p = NA_real_),
+                      b1_hi = NA_real_, n_boot_ok_1 = 0L),
     df0 = d0, seg_fit = NULL)
   if (nrow(d0) < MIN_MONTHS_FOR_SEG) return(null_result)
   d0 <- d0 %>% mutate(xj = jitter_if_tied(.data[[xvar]]))
@@ -253,7 +253,7 @@ fit_seg2 <- function(df, xvar, yvar = "RESPONSE_COL", psi_init = NULL, B = 300) 
     aic_linear = NA_real_, aic_seg = NA_real_, delta_aic = NA_real_,
     boot_sum = tibble(b1_med = NA_real_, b1_lo = NA_real_, b1_hi = NA_real_,
                       b2_med = NA_real_, b2_lo = NA_real_, b2_hi = NA_real_,
-                      n_boot_ok_1 = 0L, n_boot_ok_2 = 0L, davies_p = NA_real_),
+                      n_boot_ok_1 = 0L, n_boot_ok_2 = 0L),
     df0 = d0, seg_fit = NULL)
   if (nrow(d0) < MIN_MONTHS_FOR_SEG) return(null_result)
   d0 <- d0 %>% mutate(xj = jitter_if_tied(.data[[xvar]]))
@@ -380,7 +380,7 @@ seg_tbl <- bind_rows(
     delta_aic     = map_dbl(res, "delta_aic"),
     davies_p      = map_dbl(res, "davies_p"),
     pass_aic_gain = is.finite(delta_aic) & delta_aic >= MIN_DELTA_AIC,
-    pass_davies   = is.finite(davies_p) & davies_p < 0.05,
+    pass_davies   = is.finite(davies_p) & davies_p < DAVIES_ALPHA,
     breakpoint_supported = pass_aic_gain | pass_davies)
 
 # =============================================================================

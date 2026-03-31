@@ -21,8 +21,14 @@ suppressPackageStartupMessages({
 })
 
 # ---------------------------------------------------------------------------
-# 0.  CONFIGURATION — edit ONE of the two lines below
+# 0.  CONFIGURATION
 # ---------------------------------------------------------------------------
+# No editing is needed here for standard use.
+# The config file is read from the SEASON_CONFIG environment variable
+# (default: "config.R" for the full pipeline, or set it to
+# "3STAGE/config_climate_only.R" for the climate-only pipeline).
+# The pipeline version is detected automatically from the config: if DIR_STAGE_4
+# is defined, the Stage 4 ranking output is used; otherwise Stage 3 is used.
 CONFIG_FILE <- Sys.getenv("SEASON_CONFIG", unset = "config.R")
 source(CONFIG_FILE)
 set.seed(GLOBAL_SEED)

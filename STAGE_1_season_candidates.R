@@ -185,9 +185,10 @@ build_candidate <- function(df, driver, k_seasons = 2,
       # >50% of baseline months are zero, while still placing the threshold at
       # effectively 0 for practical classification purposes.
       xb_q <- if (dm$high_is_dry) ifelse(xb == 0, 1e-6, xb) else xb
-      meta$t1 <- suppressWarnings(as.numeric(quantile(xb_q, 0.5, na.rm = TRUE)))
+      meta$t1 <- suppressWarnings(as.numeric(quantile(xb_q, Q_SPLIT_2S, na.rm = TRUE)))
     }
-    out <- assign_2season(x, t = meta$t1, low = labels[1], high = labels[2])
+    out <- assign_2season(x, t = meta$t1, low = labels[1], high = labels[2],
+                          lower_closed = dm$high_is_dry)
   } else {
     if (dm$high_is_dry) {
       # t1 = median of all baseline values (including zeros, which represent
@@ -205,7 +206,7 @@ build_candidate <- function(df, driver, k_seasons = 2,
         suppressWarnings(as.numeric(quantile(xb_pos, 0.66, na.rm = TRUE))) else NA_real_
     } else {
       # t1/t2 = tertiles (33rd/67th percentiles) of baseline: equal-sized bins.
-      q <- get_q(xb, probs = c(1/3, 2/3))
+      q <- get_q(xb, probs = Q_SPLIT_3S)
       meta$t1 <- q[1]; meta$t2 <- q[2]
     }
     out <- assign_3season(x, meta$t1, meta$t2,

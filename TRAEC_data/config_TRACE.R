@@ -1,11 +1,16 @@
 # =============================================================================
-# config_TRACE.R — TRACE Pipeline Configuration
+# config_TRACE.R — Pipeline Configuration for the TRACE Site
 # =============================================================================
-# Central configuration for the seasonal classification pipeline in the TRACE experimental site.
-# =============================================================================
-
-# =============================================================================
-# 1. PATHS AND DATA
+# Seasonal classification pipeline configuration for the TRACE experimental
+# site, Luquillo Experimental Forest, Puerto Rico.
+#
+# To use this config, set the environment variable before running any stage:
+#   Sys.setenv(SEASON_CONFIG = "TRAEC_data/config_TRACE.R")
+#
+# Structure:
+#   SECTION 1 — SITE SETTINGS  (site-specific; must be reviewed for every run)
+#   SECTION 2 — METHOD SETTINGS (defaults; edit only with scientific justification)
+#   SECTION 3 — ADVANCED SETTINGS (internal thresholds; do not change lightly)
 # =============================================================================
 
 PROJECT_DIR <- tryCatch(
@@ -17,25 +22,20 @@ DIR_STAGE_2 <- "output_STAGE_2"
 DIR_STAGE_3 <- "output_STAGE_3"
 DIR_STAGE_4 <- "output_STAGE_4"
 
-# Monthly climate (Year, Month, driver columns)
+# =============================================================================
+# SECTION 1 — SITE SETTINGS
+# =============================================================================
+
+# ---- Input files ------------------------------------------------------------
 CLIMATE_CSV  <- file.path(PROJECT_DIR, "CLIM_TRACE.csv")
-# Monthly ecological data (Year, Month, response columns)
 RESPONSE_CSV <- file.path(PROJECT_DIR, "RESPONSE_TRACE.csv")
-# Column in RESPONSE_CSV containing the monthly ecological response
+# Monthly log-transformed soil CO2 flux (µmol m⁻² s⁻¹, log scale)
 RESPONSE_COL <- "log_flux"
 
-# =============================================================================
-# 2. CLIMATE DRIVER METADATA
-# =============================================================================
-# One row per candidate driver. Controls polarity and season labeling
-# throughout all stages.
-#
-#   driver      Column name in CLIMATE_CSV
-#   high_is_dry TRUE  → high values = dry (e.g., CWD, VPD)
-#               FALSE → high values = wet (e.g., SPEI, Rain)
-#   label_low   Season label for low-value months
-#   label_high  Season label for high-value months
-#   label_mid   Season label for the middle bin (k = 3 only)
+# ---- Climate driver metadata ------------------------------------------------
+# driver      : column name in CLIMATE_CSV.
+# high_is_dry : TRUE if high values indicate drier conditions.
+# label_low/high/mid : season labels assigned to each value range.
 
 DRIVER_META <- data.frame(
   driver      = c("SPEI",        "CWD",        "Rain_roll"),
@@ -43,90 +43,82 @@ DRIVER_META <- data.frame(
   label_low   = c("Dry",         "Wet",         "Dry"),
   label_high  = c("Wet",         "Dry",         "Wet"),
   label_mid   = c("Transition",  "Transition",  "Transition"),
-  stringsAsFactors = FALSE
-)
+  stringsAsFactors = FALSE)
 
-# =============================================================================
-# 3. STAGE 1 — Season Candidate Parameters
-# =============================================================================
-
-# Baseline period for climatological thresholds.
+# ---- Baseline period --------------------------------------------------------
+# 1995–2015: pre-disturbance period with stable instrumentation at TRACE.
 BASELINE_START <- 1995
 BASELINE_END   <- 2015
 
-# Standard (literature-backed) thresholds: driver → k → cut-point(s)
+# ---- Standard thresholds ----------------------------------------------------
+# SPEI: 0 is the standard WMO reference dividing dry from wet.
+# CWD: 0 = no deficit (Wet); 20 mm separates moderate from high deficit.
+# Rain_roll: 300 mm/mo is the approximate TRACE long-term monthly mean.
 STD_THRESHOLDS <- list(
   SPEI = list(
-    two   = list(t = 0),                   # < 0 Dry, >= 0 Wet
-    three = list(t1 = -1, t2 = 1)),        # < -1 Dry, [-1,1) Trans, >= 1 Wet
+    two   = list(t = 0),
+    three = list(t1 = -1, t2 = 1)),
   CWD = list(
-    two   = list(t = 0),                   # = 0 Wet, > 0 Dry
-    three = list(t1 = 0, t2 = 20)),        # = 0 Wet, (0,20] Trans, > 20 Dry
+    two   = list(t = 0),
+    three = list(t1 = 0, t2 = 20)),
   Rain_roll = list(
-    two   = list(t = 300),                 # < 300 Dry, >= 300 Wet
-    three = list(t1 = 180, t2 = 300))      # < 180 Dry, [180,300) Trans, >= 300 Wet
-)
+    two   = list(t = 300),
+    three = list(t1 = 180, t2 = 300)))
 
-# Screening thresholds
-S1_MIN_PCT_ASSIGNED <- 90   # Min fraction of months assigned a label
-S1_MIN_BIN_N_2S     <- 24L    # Min months in smallest bin, k = 2 (~2 yr)
-S1_MIN_BIN_N_3S     <- 18L    # Min months in smallest bin, k = 3 (~1.5 yr)
-
-# =============================================================================
-# 4. STAGE 2 — Segmented Regression Parameters
-# =============================================================================
-
-# Segmentation drivers with initial breakpoint guesses and axis labels.
-# psi1/psi2: rough estimates of where the response changes slope.
+# ---- Segmented regression initial breakpoints (Stage 2) ---------------------
 SEG_DRIVERS <- data.frame(
-  driver = c("Rain_roll",   "CWD", "SPEI"),
-  psi1   = c(300,            10,            -1),
-  psi2   = c(600,            30,             0),
-  stringsAsFactors = FALSE
-)
+  driver = c("Rain_roll", "CWD",  "SPEI"),
+  psi1   = c(300,          10,    -1),
+  psi2   = c(600,          30,     0),
+  stringsAsFactors = FALSE)
 
-MIN_MONTHS_FOR_SEG <- 45     # Minimum months for segmented regression
-BOOT_B_SEG         <- 300    # Bootstrap iterations for breakpoint CI
-MIN_DELTA_AIC      <- 2      # ΔAIC threshold: segmented > linear
-
-# =============================================================================
-# 5. STAGE 3 — Stress-Test Parameters
-# =============================================================================
-
-# Hard screens (candidates failing any of these are dropped)
-S3_MIN_PCT_ASSIGNED   <- 0.90   # Ecological-window assignment completeness
-S3_MIN_SEASON_PROP    <- 0.10   # Min proportion per season level
-S3_MEAN_MONTH_CONS    <- 0.55   # Ecological-window calendar-month consistency
-S3_MIN_BLOCK_PROP     <- 0.05   # Min season proportion within any block
-S3_MIN_HEALTHY_BLOCKS <- 0.50   # Fraction of blocks retaining all k levels
-S3_BLOCK_YEARS        <- 2      # Block length in years for stability test
-
-# Informational flags (reported but never trigger a drop)
-S3_FLAG_KAPPA_LOW  <- 0.10      # κ below "slight" agreement
-S3_FLAG_ALIGN_IQR  <- 1.5       # Threshold–breakpoint distance in IQR units
-S3_FLAG_OMEGA_SQ_LOW <- 0.01    # omega-squared below Cohen's "small" benchmark
+# ---- Tier weights (Stage 4 ranking) ----------------------------------------
+# Climate structure weighted highest to avoid circular reasoning with response.
+W_CLIMATE <- 0.50
+W_ROBUST  <- 0.30
+W_VERIFY  <- 0.20
 
 # =============================================================================
-# 6. STAGE 4 — Decision Ranking Parameters
+# SECTION 2 — METHOD SETTINGS
 # =============================================================================
 
-# Tier weights (must sum to 1.0)
-W_CLIMATE <- 0.50    # Tier 1: Climate structure
-W_ROBUST  <- 0.30    # Tier 2: Internal robustness (std vs quantile)
-W_VERIFY  <- 0.20    # Tier 3: External verification (Stage 1 vs Stage 2)
+Q_SPLIT_2S <- 0.50
+Q_SPLIT_3S <- c(1/3, 2/3)
+DAVIES_ALPHA <- 0.05
 
-BOOT_N_RANK <- 300   # Year-block bootstrap replicates
+MIN_MONTHS_FOR_SEG <- 45
+BOOT_B_SEG         <- 300
+MIN_DELTA_AIC      <- 2
 
-DAVIES_K                    <- 10
-S4_NEAR_CONSTANT_THRESHOLD  <- 0.95
-SENS_W_CLIMATE_RANGE        <- c(0.30, 0.70)
-SENS_W_ROBUST_RANGE         <- c(0.10, 0.40)
-SENS_W_VERIFY_RANGE         <- c(0.10, 0.40)
-SENS_W_STEP                 <- 0.10
+BOOT_N_RANK <- 300
+
+S1_MIN_PCT_ASSIGNED <- 90
+S1_MIN_BIN_N_2S     <- 24L
+S1_MIN_BIN_N_3S     <- 18L
 
 # =============================================================================
-# 7. GLOBAL SEED
+# SECTION 3 — ADVANCED SETTINGS
 # =============================================================================
+
+DAVIES_K <- 10
+
+S3_MIN_PCT_ASSIGNED   <- 0.90
+S3_MIN_SEASON_PROP    <- 0.10
+S3_MEAN_MONTH_CONS    <- 0.55
+S3_MIN_BLOCK_PROP     <- 0.05
+S3_MIN_HEALTHY_BLOCKS <- 0.50
+S3_BLOCK_YEARS        <- 2
+
+S3_FLAG_KAPPA_LOW    <- 0.10
+S3_FLAG_ALIGN_IQR    <- 1.5
+S3_FLAG_OMEGA_SQ_LOW <- 0.01
+
+S4_NEAR_CONSTANT_THRESHOLD <- 0.95
+
+SENS_W_CLIMATE_RANGE <- c(0.30, 0.70)
+SENS_W_ROBUST_RANGE  <- c(0.10, 0.40)
+SENS_W_VERIFY_RANGE  <- c(0.10, 0.40)
+SENS_W_STEP          <- 0.10
 
 GLOBAL_SEED <- 123
 
@@ -134,7 +126,6 @@ GLOBAL_SEED <- 123
 # DERIVED OBJECTS (do not edit below this line)
 # =============================================================================
 
-# Stage output directory resolver
 stage_dir <- function(stage) {
   d <- switch(as.character(stage),
               "1" = DIR_STAGE_1, "2" = DIR_STAGE_2,
@@ -143,13 +134,11 @@ stage_dir <- function(stage) {
   file.path(PROJECT_DIR, d)
 }
 
-# Driver metadata lookup (returns named list for one driver)
 driver_info <- function(drv) {
   row <- DRIVER_META[DRIVER_META$driver == drv, ]
   if (nrow(row) == 0) stop("Driver '", drv, "' not found in DRIVER_META")
   as.list(row)
 }
 
-# Validate tier weights
 stopifnot(abs(W_CLIMATE + W_ROBUST + W_VERIFY - 1.0) < 1e-6)
 # =============================================================================
