@@ -129,23 +129,25 @@ build_candidate <- function(df, driver, k_seasons = 2, method = c("std", "quanti
       meta$t1 <- NA_real_
     } else {
       xb_q <- if (dm$high_is_dry) ifelse(xb == 0, 1e-6, xb) else xb
-      meta$t1 <- suppressWarnings(as.numeric(quantile(xb_q, 0.5, na.rm = TRUE)))
+      meta$t1 <- suppressWarnings(as.numeric(quantile(xb_q, Q_SPLIT_2S, na.rm = TRUE)))
     }
-    out <- assign_2season(x, t = meta$t1, low = labels[1], high = labels[2])
+    out <- assign_2season(x, t = meta$t1, low = labels[1], high = labels[2],
+                          lower_closed = dm$high_is_dry)
   } else {
     if (dm$high_is_dry) {
       xb_pos <- xb[xb > 0]
       meta$t1 <- if (length(xb) >= 24)
-        suppressWarnings(as.numeric(quantile(xb, 0.50, na.rm = TRUE))) else NA_real_
+        suppressWarnings(as.numeric(quantile(xb, Q_SPLIT_2S, na.rm = TRUE))) else NA_real_
       meta$t2 <- if (length(xb_pos) >= 24)
         suppressWarnings(as.numeric(quantile(xb_pos, 0.66, na.rm = TRUE))) else NA_real_
     } else {
-      q <- get_q(xb, probs = c(1/3, 2/3))
+      q <- get_q(xb, probs = Q_SPLIT_3S)
       meta$t1 <- q[1]
       meta$t2 <- q[2]
     }
     out <- assign_3season(x, meta$t1, meta$t2,
-                          low = labels[1], mid = labels[2], high = labels[3])
+                          low = labels[1], mid = labels[2], high = labels[3],
+                          lower_closed = dm$high_is_dry)
   }
 
   list(season = out, meta = meta)
