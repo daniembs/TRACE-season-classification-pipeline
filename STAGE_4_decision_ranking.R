@@ -500,10 +500,10 @@ decision_table_final <- decision_table %>%
 # =============================================================================
 
 weight_grid <- expand.grid(
-  w_clim = seq(0.3, 0.7, by = 0.1),
-  w_rob  = seq(0.1, 0.4, by = 0.1)) %>%
+  w_clim = seq(SENS_W_CLIMATE_RANGE[1], SENS_W_CLIMATE_RANGE[2], by = SENS_W_STEP),
+  w_rob  = seq(SENS_W_ROBUST_RANGE[1],  SENS_W_ROBUST_RANGE[2],  by = SENS_W_STEP)) %>%
   mutate(w_ver = 1 - w_clim - w_rob) %>%
-  filter(w_ver >= 0.1, w_ver <= 0.4)
+  filter(w_ver >= SENS_W_VERIFY_RANGE[1], w_ver <= SENS_W_VERIFY_RANGE[2])
 
 weight_sensitivity <- weight_grid %>%
   pmap_dfr(function(w_clim, w_rob, w_ver) {

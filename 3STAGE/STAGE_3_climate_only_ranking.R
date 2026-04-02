@@ -287,8 +287,8 @@ decision_table_final <- decision_table %>%
 # =============================================================================
 
 weight_grid <- expand_grid(
-  w_climate = seq(0.30, 0.90, by = 0.05),
-  w_robust  = seq(0.10, 0.70, by = 0.05)
+  w_climate = seq(SENS_W_CLIMATE_RANGE[1], SENS_W_CLIMATE_RANGE[2], by = SENS_W_STEP),
+  w_robust  = seq(SENS_W_ROBUST_RANGE[1],  SENS_W_ROBUST_RANGE[2],  by = SENS_W_STEP)
 ) %>%
   filter(abs(w_climate + w_robust - 1) < 1e-9)
 
