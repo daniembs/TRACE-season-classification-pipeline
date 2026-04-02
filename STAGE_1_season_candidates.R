@@ -210,7 +210,8 @@ build_candidate <- function(df, driver, k_seasons = 2,
       meta$t1 <- q[1]; meta$t2 <- q[2]
     }
     out <- assign_3season(x, meta$t1, meta$t2,
-                          low = labels[1], mid = labels[2], high = labels[3])
+                          low = labels[1], mid = labels[2], high = labels[3],
+                          lower_closed = dm$high_is_dry)
   }
   list(season = out, meta = meta)
 }
