@@ -9,7 +9,13 @@ This repository contains:
 
 ## Software
 
-The pipeline was developed in **R**. Package requirements are loaded within the scripts.
+The pipeline is written in **R**. Install required packages before running:
+
+```r
+install.packages(c("tidyverse", "lubridate", "zoo", "segmented"))
+```
+
+Tested with R >= 4.3.0. Package version notes are embedded in each stage script.
 
 ## Overview
 
@@ -28,9 +34,6 @@ The pipeline selects a season definition from a predefined candidate set using c
 
 ## Core repository files
 
-### Shared configuration
-- `config.R`
-
 ### Full 4-stage pipeline (run in this order)
 - `config.R`
 - `STAGE_1_season_candidates.R`
@@ -40,14 +43,15 @@ The pipeline selects a season definition from a predefined candidate set using c
 - `FINAL_season_assignment.R`
 
 ### Climate-only 3-stage pipeline (run in this order)
-- `config_climate_only.R`
-- `STAGE_1_climate_only_candidates.R`
-- `STAGE_2_climate_only_validation.R`
-- `STAGE_3_climate_only_ranking.R
+Scripts for this pipeline are in the `3STAGE/` subfolder.
+- `3STAGE/config_climate_only.R`
+- `3STAGE/STAGE_1_climate_only_candidates.R`
+- `3STAGE/STAGE_2_climate_only_validation.R`
+- `3STAGE/STAGE_3_climate_only_ranking.R`
 - `FINAL_season_assignment.R`
 
 ### General documentation
-- `SOP_Season_Pipeline.docx`
+- `SOP_Pipeline.docx`
 
 ## Input requirements
 
@@ -72,29 +76,34 @@ One monthly climate table is required:
 
 ## General configuration
 
-All site-specific settings are edited in config.
-- project directory and file paths
-- climate drivers and polarity
-- standard thresholds
-- baseline period
-- ecological response column and related settings
-- scoring weights and bootstrap settings
+All site-specific settings are edited in the config file (not in the stage scripts). Open the config file for your pipeline version and review all parameters before the first run:
+- `config.R` for the full 4-stage pipeline
+- `3STAGE/config_climate_only.R` for the climate-only pipeline
 
-At minimum, users must review:
-- `CLIMATE_CSV`
-- `RESPONSE_CSV` (full pipeline only)
-- `RESPONSE_COL` (full pipeline only)
-- `DRIVER_META`
-- `STD_THRESHOLDS`
-- `SEG_DRIVERS` (full pipeline only)
+At minimum, review and set:
+- `CLIMATE_CSV` and `RESPONSE_CSV` / `RESPONSE_COL` (full pipeline only)
+- `DRIVER_META` — driver names, polarity, and season labels
+- `STD_THRESHOLDS` — literature-based classification thresholds
+- `SEG_DRIVERS` and initial breakpoint guesses (full pipeline only)
 - `BASELINE_START`, `BASELINE_END`
-- stage thresholds and tier weights
+- Tier weights (`W_CLIMATE`, `W_ROBUST`, `W_VERIFY`)
 
 Driver names must match exactly across:
-- the climate CSV
+- the climate CSV column headers
 - `DRIVER_META`
 - `STD_THRESHOLDS`
 - `SEG_DRIVERS` (full pipeline only)
+
+### Switching config files without editing scripts
+
+Set the `SEASON_CONFIG` environment variable before sourcing any stage script to point to a different config file:
+
+```r
+Sys.setenv(SEASON_CONFIG = "TRAEC_data/config_TRACE.R")
+source("STAGE_1_season_candidates.R")
+```
+
+If `SEASON_CONFIG` is not set, each script defaults to `config.R` (full pipeline) or `config_climate_only.R` (climate-only pipeline).
 
 ## Reproducibility notes
 
@@ -105,12 +114,12 @@ Driver names must match exactly across:
 
 ## Test data
 
-The folder `test_data/` contains synthetic test data and one separate SOP with the exact config adjustments required to run that dataset successfully:
+The folder `test_data/` contains synthetic test data and a dedicated SOP describing the exact config adjustments required to run that dataset:
 
 - `test_data/CLIM_test_alt_1990_2025.csv`
 - `test_data/RESPONSE_test_alt_2019_2025.csv`
 - `test_data/SOP_TestData_ConfigAdjustment.docx`
-- `config_testdata.R`
+- `test_data/config_testdata.R
 
 ## Code availability
 
@@ -122,15 +131,12 @@ Submitted to *Agricultural and Forest Meteorology*
 
 ## Manuscript data
 
-This repository contains the code used to classify season definitions at the TRACE site in the Luquillo Experimental Forest, Puerto Rico.
+The folder `TRAEC_data/` contains the TRACE climate and ecological data used in the manuscript, along with a dedicated SOP and config file:
 
-The folder `TRACE_data/` contains the TRACE climate and ecological data used to classify season definitions at the site in the Luquillo Experimental Forest, PR.
-An SOP with the exact config adjustments required to run that dataset successfully, and the dedicated config are provided.
-
-- `SOP_ManuscriptData_ConfigAdjustment.docx`
-- `test_data/CLIM_TRACE.csv`
-- `test_data/RESPONSE_TRACE.csv`
-- `config_TRACE.R`
+- `TRAEC_data/SOP_ManuscriptData_ConfigAdjustment.docx`
+- `TRAEC_data/CLIM_TRACE.csv`
+- `TRAEC_data/RESPONSE_TRACE.csv`
+- `TRAEC_data/config_TRACE.R`
 
 ## Citation
 
