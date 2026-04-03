@@ -441,10 +441,19 @@ write.csv(ecological_anova_summary %>%
                           n_obs, n_levels, p_value, omega_sq, kw_p),
           file.path(tab_dir, "anova_summary.csv"), row.names = FALSE)
 
-write.csv(posthoc_tbl %>%
-            dplyr::select(candidate_id, driver, n_seasons = k, method,
-                          comparison, diff, lwr, upr, p_adj = `p adj`),
-          file.path(tab_dir, "tukey_posthoc.csv"), row.names = FALSE)
+# Guard: if no k=3 candidates had enough observations for TukeyHSD, posthoc_tbl
+# will have no rows and the Tukey-specific columns will not exist after unnesting.
+# Write an empty-but-valid CSV rather than crashing on a missing-column select.
+posthoc_out <- if (nrow(posthoc_tbl) > 0 && "comparison" %in% names(posthoc_tbl)) {
+  posthoc_tbl %>%
+    dplyr::select(candidate_id, driver, n_seasons = k, method,
+                  comparison, diff, lwr, upr, p_adj = `p adj`)
+} else {
+  tibble(candidate_id = character(), driver = character(), n_seasons = integer(),
+         method = character(), comparison = character(),
+         diff = numeric(), lwr = numeric(), upr = numeric(), p_adj = numeric())
+}
+write.csv(posthoc_out, file.path(tab_dir, "tukey_posthoc.csv"), row.names = FALSE)
 
 write.csv(group_means_tbl %>%
             dplyr::select(candidate_id, driver, n_seasons = k, method,

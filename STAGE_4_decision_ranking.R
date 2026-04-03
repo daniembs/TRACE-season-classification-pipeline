@@ -68,6 +68,15 @@ base_tbl <- screened_tbl %>%
          driver       = as.character(driver),
          method       = as.character(method))
 
+# Guard: if Stage 3 dropped all candidates, base_tbl is empty. The bootstrap
+# and weight sensitivity loops would run silently, produce empty/NA outputs,
+# and Section 12 would crash accessing winner_row columns. Stop early with a
+# diagnostic message pointing to filter_results.csv.
+if (nrow(base_tbl) == 0)
+  stop("Stage 4: no candidates survived Stage 3 screening. ",
+       "Review output_STAGE_3/tables/filter_results.csv to identify which ",
+       "drop rules fired and consider relaxing the relevant thresholds in config.")
+
 # Ecological-window level counts
 n_seasons_eco_tbl <- season_long %>%
   semi_join(response_months, by = "DateMonth") %>%
@@ -213,7 +222,7 @@ stage2_best_match <- function(cid, drv, kk) {
              stage2_discord_ci_hi = met$discord_ci_hi,
              bsa_min_ssa = met$bsa_min, kappa_ssa = met$kappa,
              stage2_pmax = pmax2,
-             stage2_near_constant = is.finite(pmax2) && pmax2 > 0.95)
+             stage2_near_constant = is.finite(pmax2) && pmax2 > S4_NEAR_CONSTANT_THRESHOLD)
     }) %>% ungroup() %>%
     arrange(desc(kappa_ssa), desc(bsa_min_ssa), desc(stage2_n)) %>%
     slice(1) %>%
@@ -424,7 +433,7 @@ recompute_boot_components <- function(months_full_b, months_response_b) {
                  stage2_discord_ci_hi = met$discord_ci_hi,
                  bsa_min_ssa = met$bsa_min, kappa_ssa = met$kappa,
                  stage2_pmax = pmax2,
-                 stage2_near_constant = is.finite(pmax2) && pmax2 > 0.95)
+                 stage2_near_constant = is.finite(pmax2) && pmax2 > S4_NEAR_CONSTANT_THRESHOLD)
         }) %>% ungroup() %>%
         arrange(desc(kappa_ssa), desc(bsa_min_ssa), desc(stage2_n)) %>%
         slice(1) %>% mutate(stage2_reason = "ok") %>%
@@ -440,6 +449,16 @@ boot_once <- function() {
   months_full_b <- boot_months(season_long, years_full)
   months_response_b <- boot_months(response_months, years_response)
   comps <- recompute_boot_components(months_full_b, months_response_b)
+  # Design note: Tier 1 (climate structure) components are taken from the
+  # original decision_set — they are computed from the full climate record
+  # and do not vary by year sample, so resampling would add no signal.
+  # nce_ssa (Tier 3, structural partition alignment) is also taken from the
+  # original decision_set: it measures the geometric relationship between
+  # Stage 1 thresholds and Stage 2 breakpoints on the driver axis, which is
+  # a fixed property of those two fits, independent of which years are drawn.
+  # bsa_min_ssa (Tier 3, label agreement) IS resampled — it depends on which
+  # ecological months are present in the bootstrap window.
+  # This asymmetry is intentional: only year-dependent quantities are resampled.
   decision_set %>%
     dplyr::select(candidate_id, driver, k,
                   mean_month_consistency, min_month_consistency,
@@ -615,7 +634,6 @@ if (is.finite(winner_omega) && winner_omega < S3_FLAG_OMEGA_SQ_LOW)
 
 # --- Weight sensitivity ---
 n_weight_winners <- n_distinct(weight_sensitivity$top_candidate)
-n_weight_combos  <- nrow(weight_sensitivity)
 if (n_weight_winners > 1) {
   pct_not_top <- mean(weight_sensitivity$top_candidate != winner_row$candidate_id) * 100
   if (pct_not_top > 25)

@@ -51,7 +51,8 @@ Scripts for this pipeline are in the `3STAGE/` subfolder.
 - `FINAL_season_assignment.R`
 
 ### General documentation
-- `SOP_Pipeline.docx`
+- `SOP_Pipeline.docx` — full standard operating procedure
+- `PIPELINE_OUTPUTS_GUIDE.md` — interpretation guide for all output columns and diagnostic files; read this after your first run
 
 ## Input requirements
 
@@ -103,7 +104,20 @@ Sys.setenv(SEASON_CONFIG = "TRAEC_data/config_TRACE.R")
 source("STAGE_1_season_candidates.R")
 ```
 
-If `SEASON_CONFIG` is not set, each script defaults to `config.R` (full pipeline) or `config_climate_only.R` (climate-only pipeline).
+If `SEASON_CONFIG` is not set, each script defaults to `config.R` (full pipeline) or `3STAGE/config_climate_only.R` (climate-only pipeline; path includes the subfolder prefix so scripts can be run from the project root).
+
+## Pipeline outputs
+
+The final deliverable is `season_assignment_final.csv` written to the project root directory by `FINAL_season_assignment.R`.
+
+| Column | Description |
+|--------|-------------|
+| `Year` | Calendar year |
+| `Month` | Calendar month (1–12) |
+| `season` | Season label assigned to this month (e.g. "Wet", "Dry", "Transition") |
+| `candidate_id` | Identifier of the winning season definition |
+
+All intermediate diagnostic outputs are written to `output_STAGE_1/` through `output_STAGE_4/` (or `output_STAGE_1_climate_only_candidates/` etc. for the 3-stage pipeline). See `PIPELINE_OUTPUTS_GUIDE.md` for a full description of every output column and recommended interpretation benchmarks.
 
 ## Reproducibility notes
 

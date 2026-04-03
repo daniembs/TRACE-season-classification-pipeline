@@ -21,7 +21,10 @@ suppressPackageStartupMessages({
   library(lubridate)
 })
 
-CONFIG_FILE <- Sys.getenv("SEASON_CONFIG", unset = "config_climate_only.R")
+# Default path uses the 3STAGE/ prefix so the script works when run from the
+# project root directory. When run from inside 3STAGE/, set SEASON_CONFIG
+# explicitly or the file will still be found via the relative path.
+CONFIG_FILE <- Sys.getenv("SEASON_CONFIG", unset = "3STAGE/config_climate_only.R")
 source(CONFIG_FILE)
 set.seed(GLOBAL_SEED)
 

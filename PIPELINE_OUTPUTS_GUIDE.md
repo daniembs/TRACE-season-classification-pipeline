@@ -17,9 +17,12 @@ are unfavourable simultaneously, treat the winning season definition as
 |--------|-----------|---------|-------------|
 | `p_top1` | ≥ 0.60 | 0.40 – 0.59 | < 0.40 |
 | `bsa_min_std_quant` | ≥ 0.60 | 0.40 – 0.59 | < 0.40 |
-| `bsa_min_ssa` | ≥ 0.50 | 0.30 – 0.49 | < 0.30 |
+| `bsa_min_ssa` | ≥ 0.60 | 0.40 – 0.59 | < 0.30 |
 | `breakpoint_supported` | TRUE for ≥ 1 driver | — | FALSE for all drivers |
 | `omega_sq` (winner) | ≥ 0.06 | 0.01 – 0.06 | < 0.01 |
+
+*Note: `bsa_min_ssa` is only present in the full 4-stage pipeline. It is absent from the
+climate-only (3-stage) decision table. See the climate-only section at the end of this guide.*
 
 The pipeline also emits a consolidated console warning at runtime when
 unfavourable signals co-occur. See the end of this guide for the interpretation
@@ -131,7 +134,7 @@ regardless of label identity.
 ### `bsa_min_ssa`
 Conservative lower bound on agreement between Stage 1 (climate threshold)
 and Stage 2 (ecological breakpoint) season classifications over the ecological
-measurement window.
+measurement window. Only present in the full 4-stage pipeline.
 
 **Benchmarks:**
 - ≥ 0.60 — strong cross-validation; the climate-derived and ecologically-
@@ -139,10 +142,13 @@ measurement window.
   artefact of the threshold method.
 - 0.40 – 0.59 — partial agreement. The broad seasonal pattern is shared but
   boundaries differ in some years.
-- < 0.40 — weak agreement. The ecological breakpoint does not align with the
+- < 0.30 — investigate. The ecological breakpoint does not align with the
   climate threshold. This is not necessarily fatal (Stage 2 uses the response
   variable; if it is noisy, agreement will be low even for a correct climate-
-  derived definition), but warrants investigation.
+  derived definition), but warrants investigation of `segmentation_results.csv`
+  and the response variable quality.
+
+The `poor_eco_agreement` quality flag fires at `bsa_min_ssa < 0.30`.
 
 **If `stage2_near_constant = TRUE`:** the Stage 2 ecological labels are
 dominated by one season (> `S4_NEAR_CONSTANT_THRESHOLD`). Agreement metrics
@@ -357,3 +363,99 @@ The pipeline emits a consolidated runtime warning when unfavourable signals
 co-occur. This warning appears at the end of Stage 4 (or Stage 3 for the
 climate-only pipeline) console output and summarises which conditions were
 triggered.
+
+---
+
+## Additional columns in decision_table_final.csv
+
+### `kappa_std_quant` and `kappa_ssa`
+Cohen's κ between the two label series (std vs. quantile, or Stage 1 vs. Stage 2).
+κ corrects raw agreement for the proportion expected by chance.
+
+- κ > 0.80 — near-perfect agreement.
+- κ 0.60 – 0.80 — substantial agreement.
+- κ 0.40 – 0.59 — moderate agreement.
+- κ < 0.40 — fair or poor agreement.
+
+κ and BSA_min are complementary: BSA_min gives a statistically conservative bound on
+agreement; κ gives a chance-corrected measure. When they disagree, the BSA_min is more
+conservative because it is a lower bound, not a point estimate.
+
+### `stage2_pmax`
+Highest single-class proportion in the Stage 2 (ecological breakpoint) season labels
+over the ecological window. A value close to 1.0 means nearly all ecological-window
+months were assigned to one season by the Stage 2 breakpoint.
+
+When `stage2_pmax > S4_NEAR_CONSTANT_THRESHOLD` (default 0.95), `stage2_near_constant`
+is set to TRUE and label-agreement metrics against Stage 2 become uninformative.
+
+### `entropy_norm`
+Normalised Shannon entropy of the season class distribution over the full climate record.
+Range [0, 1]. A value of 1.0 means all k seasons are perfectly equally represented.
+A value near 0 means the distribution is highly skewed.
+
+This is a supplementary balance diagnostic alongside `min_bin_prop`. Unlike `min_bin_prop`
+(which captures only the smallest bin), `entropy_norm` summarises the overall spread.
+No hard threshold is applied — use it to compare candidate balance qualitatively.
+
+### `med_run` (in validation_tbl.csv)
+Median run length: the median number of consecutive months assigned to the same season
+label. Higher values mean longer unbroken seasonal stretches, which is biologically
+more plausible. Very short median runs (≤ 2 months) indicate the threshold lies in a
+region of high driver density where labels switch rapidly from month to month.
+
+---
+
+## block_stability.csv
+
+One row per candidate × year block. Shows whether each season level was represented
+in every temporal block used for the structural stress test.
+
+| Column | Meaning |
+|--------|---------|
+| `test_years` | Year range of this block (e.g. "2019-2020") |
+| `n_block` | Total months in this block |
+| `n_assigned_block` | Months with a non-NA season label |
+| `n_levels_block` | Number of distinct season levels present |
+| `min_bin_prop_block` | Smallest bin proportion within this block |
+| `min_bin_n_block` | Count of months in the smallest bin |
+
+A block where `n_levels_block < k` means one season level is entirely absent from
+that period — this contributes to the `fail_block_collapse` drop criterion.
+
+---
+
+## retained_candidates.csv additional columns
+
+### `prop_healthy`
+Proportion of year blocks where all k season levels were represented (none collapsed).
+`prop_healthy = 1.0` means every block contained all seasons; lower values indicate
+periods where a season level disappeared.
+
+### `n_collapsed`
+Number of year blocks where at least one season level was absent. High values for a
+short record (e.g., n_collapsed = 2 out of 3 blocks) indicate the season definition
+is fragile over time.
+
+---
+
+## Climate-only (3-stage) pipeline differences
+
+The climate-only pipeline produces the same `decision_table_final.csv` column layout
+as the full pipeline **except** that the following columns are absent because there is
+no Stage 2 ecological segmentation:
+
+- `stage2_n`, `bsa_min_ssa`, `nce_ssa`, `kappa_ssa`
+- `stage2_pmax`, `stage2_near_constant`, `ssa_reason`
+
+The maximum `score_n_components` for the climate-only pipeline is **6** (4 Tier-1 + 2 Tier-2),
+not 8. The `incomplete_scoring` quality flag uses 6 as the reference maximum.
+
+The weight sensitivity grid in the climate-only pipeline sweeps over `w_climate` and
+`w_robust` only (no `w_verify`), so `weight_sensitivity.csv` has two weight columns
+instead of three.
+
+There is no `filter_results.csv` with ecological-window columns; the climate-only
+Stage 2 produces a structurally identical file but with `_val` suffixes on the
+consistency and balance columns, reflecting the validation window rather than an
+ecological measurement window.

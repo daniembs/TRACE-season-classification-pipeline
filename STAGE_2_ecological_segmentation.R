@@ -192,6 +192,8 @@ fit_seg1 <- function(df, xvar, yvar = "RESPONSE_COL", psi_init = NULL, B = 300) 
   null_result <- list(
     ok = FALSE, b1 = NA_real_,
     aic_linear = NA_real_, aic_seg = NA_real_, delta_aic = NA_real_,
+    davies_p = NA_real_,   # must mirror the success-path list structure so
+                           # map_dbl(res, "davies_p") does not crash on null paths
     boot_sum = tibble(b1_med = NA_real_, b1_lo = NA_real_,
                       b1_hi = NA_real_, n_boot_ok_1 = 0L),
     df0 = d0, seg_fit = NULL)
@@ -251,6 +253,8 @@ fit_seg2 <- function(df, xvar, yvar = "RESPONSE_COL", psi_init = NULL, B = 300) 
   null_result <- list(
     ok = FALSE, b1 = NA_real_, b2 = NA_real_,
     aic_linear = NA_real_, aic_seg = NA_real_, delta_aic = NA_real_,
+    davies_p = NA_real_,   # must mirror the success-path list structure so
+                           # map_dbl(res, "davies_p") does not crash on null paths
     boot_sum = tibble(b1_med = NA_real_, b1_lo = NA_real_, b1_hi = NA_real_,
                       b2_med = NA_real_, b2_lo = NA_real_, b2_hi = NA_real_,
                       n_boot_ok_1 = 0L, n_boot_ok_2 = 0L),

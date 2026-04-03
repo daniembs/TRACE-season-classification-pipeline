@@ -91,8 +91,13 @@ if (any(n_baseline_finite < 24))
 # high values indicate dry conditions (e.g. CWD), so the threshold value
 # itself falls in the "low" (wet) bin rather than the "high" (dry) bin.
 # This keeps the boundary convention consistent with high_is_dry polarity.
+# Guard: when t is non-finite (e.g. NA_real_ from an under-powered baseline),
+# return all-NA rather than silently assigning every finite x to the "high"
+# bin (which is what case_when does when x <= NA evaluates to NA and falls
+# through to the TRUE clause).
 assign_2season <- function(x, t, low = "Low", high = "High",
                            lower_closed = FALSE) {
+  if (!is.finite(t)) return(rep(NA_character_, length(x)))
   if (lower_closed)
     case_when(!is.finite(x) ~ NA_character_, x <= t ~ low, TRUE ~ high)
   else
@@ -193,12 +198,11 @@ build_candidate <- function(df, driver, k_seasons = 2,
     if (dm$high_is_dry) {
       # t1 = median of all baseline values (including zeros, which represent
       # "no deficit" months and correctly anchor the lower boundary).
-      # t2 = 66th percentile of strictly positive baseline values only; this
+      # t2 = Q_HID_T2 percentile of strictly positive baseline values only; this
       # places the Dry/Transition boundary within the deficit-bearing months,
-      # separating moderate from high water-stress months.  The 0.66 value is a
-      # fixed scientific choice matching the ~2/3 split used for the
-      # non-high_is_dry case (tertiles); change with caution and document if
-      # adjusted for a specific site.
+      # separating moderate from high water-stress months.  Q_HID_T2 defaults to
+      # 0.66, matching the ~2/3 split used for the non-high_is_dry case (tertiles).
+      # Adjust Q_HID_T2 in config with caution and document any deviation.
       xb_pos <- xb[xb > 0]
       meta$t1 <- if (length(xb) >= 24)
         suppressWarnings(as.numeric(quantile(xb, 0.50, na.rm = TRUE))) else NA_real_
