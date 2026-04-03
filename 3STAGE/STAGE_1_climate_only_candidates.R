@@ -139,7 +139,7 @@ build_candidate <- function(df, driver, k_seasons = 2, method = c("std", "quanti
       meta$t1 <- if (length(xb) >= 24)
         suppressWarnings(as.numeric(quantile(xb, Q_SPLIT_2S, na.rm = TRUE))) else NA_real_
       meta$t2 <- if (length(xb_pos) >= 24)
-        suppressWarnings(as.numeric(quantile(xb_pos, 0.66, na.rm = TRUE))) else NA_real_
+        suppressWarnings(as.numeric(quantile(xb_pos, Q_HID_T2, na.rm = TRUE))) else NA_real_
     } else {
       q <- get_q(xb, probs = Q_SPLIT_3S)
       meta$t1 <- q[1]

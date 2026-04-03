@@ -203,7 +203,7 @@ build_candidate <- function(df, driver, k_seasons = 2,
       meta$t1 <- if (length(xb) >= 24)
         suppressWarnings(as.numeric(quantile(xb, 0.50, na.rm = TRUE))) else NA_real_
       meta$t2 <- if (length(xb_pos) >= 24)
-        suppressWarnings(as.numeric(quantile(xb_pos, 0.66, na.rm = TRUE))) else NA_real_
+        suppressWarnings(as.numeric(quantile(xb_pos, Q_HID_T2, na.rm = TRUE))) else NA_real_
     } else {
       # t1/t2 = tertiles (33rd/67th percentiles) of baseline: equal-sized bins.
       q <- get_q(xb, probs = Q_SPLIT_3S)

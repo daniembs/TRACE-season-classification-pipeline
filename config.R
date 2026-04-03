@@ -118,6 +118,12 @@ W_VERIFY  <- 0.20    # Tier 3: Ecological verification (Stage 1 vs Stage 2)
 Q_SPLIT_2S <- 0.50          # Median split for k = 2
 Q_SPLIT_3S <- c(1/3, 2/3)  # Tertile split for k = 3
 
+# Upper percentile for the high_is_dry k = 3 quantile threshold (t2).
+# Applied to strictly positive baseline values only, separating moderate from
+# high water-stress months. 0.66 matches the ~2/3 split used for the
+# non-high_is_dry case (tertiles). Change with caution and document if adjusted.
+Q_HID_T2 <- 0.66
+
 # ---- Davies test significance level -----------------------------------------
 DAVIES_ALPHA <- 0.05
 

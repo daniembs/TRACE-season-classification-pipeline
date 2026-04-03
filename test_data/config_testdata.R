@@ -66,6 +66,7 @@ W_VERIFY  <- 0.20
 
 Q_SPLIT_2S   <- 0.50
 Q_SPLIT_3S   <- c(1/3, 2/3)
+Q_HID_T2     <- 0.66
 DAVIES_ALPHA <- 0.05
 
 MIN_MONTHS_FOR_SEG <- 45
