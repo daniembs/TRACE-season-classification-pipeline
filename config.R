@@ -198,11 +198,12 @@ driver_info <- function(drv) {
 stopifnot(abs(W_CLIMATE + W_ROBUST + W_VERIFY - 1.0) < 1e-6)
 
 # Validate that every k=3 threshold pair has t1 < t2
-for (.thr in STD_THRESHOLDS) {
-  if (.thr$k == 3 && is.finite(.thr$t1) && is.finite(.thr$t2) && .thr$t1 >= .thr$t2)
+for (.drv in names(STD_THRESHOLDS)) {
+  .t3 <- STD_THRESHOLDS[[.drv]][["three"]]
+  if (!is.null(.t3) && is.finite(.t3$t1) && is.finite(.t3$t2) && .t3$t1 >= .t3$t2)
     stop(sprintf(
       "STD_THRESHOLDS validation: t1 (%.4f) must be < t2 (%.4f) for driver '%s' k=3.",
-      .thr$t1, .thr$t2, .thr$driver))
+      .t3$t1, .t3$t2, .drv))
 }
-rm(.thr)
+rm(.drv, .t3)
 # =============================================================================

@@ -308,8 +308,12 @@ Named constant `CV_MIN_TEST_N <- 3L` defined at top of script; used in cv_seg_rm
 ### R8 — No t1 < t2 validation in STD_THRESHOLDS
 **Files:** All 4 config files (DERIVED OBJECTS section)
 **Type:** ROBUSTNESS | **Severity:** SIGNIFICANT | **Status:** FIXED (v3-corrected)
-For-loop over STD_THRESHOLDS added to DERIVED OBJECTS in all configs. Calls `stop()`
+For-loop over `names(STD_THRESHOLDS)` added to DERIVED OBJECTS in all configs. Accesses
+`STD_THRESHOLDS[[drv]][["three"]]` to match the actual nested list structure. Calls `stop()`
 with informative message if any k=3 entry has t1 >= t2.
+**Bug fix (Session 3b):** Original loop used `for (.thr in STD_THRESHOLDS)` and accessed
+`.thr$k` / `.thr$driver` which do not exist in the named-list structure — produced
+`missing value where TRUE/FALSE needed` error. Fixed to iterate by name.
 
 ---
 
