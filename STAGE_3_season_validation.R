@@ -55,6 +55,17 @@ monthly_response <- readRDS(file.path(stage_dir(2), "monthly_response.rds")) %>%
 # Ecological-month window: only months with ecological data
 response_months <- monthly_response %>% distinct(DateMonth)
 
+# Warn when the ecological window is too short for reliable block stability testing.
+# With fewer than 2 × S3_BLOCK_YEARS years, at most one block exists; a single block
+# cannot distinguish temporal instability from genuine absence of a season level.
+n_response_years <- n_distinct(year(response_months$DateMonth))
+if (n_response_years < 2L * S3_BLOCK_YEARS)
+  warning(sprintf(
+    "Ecological window spans only %d year(s); reliable block stability requires >= %d years (%d blocks x %d yr). ",
+    n_response_years, 2L * S3_BLOCK_YEARS, 2L, S3_BLOCK_YEARS),
+    "Block-collapse drop rules may be overly sensitive. Consider extending the response ",
+    "record or increasing S3_BLOCK_YEARS in config.")
+
 # =============================================================================
 # 2. ECOLOGICAL WINDOW — restrict labels to months covered by the response record
 # =============================================================================

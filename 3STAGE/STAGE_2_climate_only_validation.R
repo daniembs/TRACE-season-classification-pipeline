@@ -57,6 +57,17 @@ validation_months <- if (use_validation_window) {
   monthly_clim %>% distinct(DateMonth)
 }
 
+# Warn when the validation window is too short for reliable block stability testing.
+# With fewer than 2 × S2_BLOCK_YEARS years, at most one block exists; a single block
+# cannot distinguish temporal instability from genuine absence of a season level.
+n_validation_years <- n_distinct(year(validation_months$DateMonth))
+if (n_validation_years < 2L * S2_BLOCK_YEARS)
+  warning(sprintf(
+    "Validation window spans only %d year(s); reliable block stability requires >= %d years (%d blocks x %d yr). ",
+    n_validation_years, 2L * S2_BLOCK_YEARS, 2L, S2_BLOCK_YEARS),
+    "Block-collapse drop rules may be overly sensitive. Consider extending the climate ",
+    "record or increasing S2_BLOCK_YEARS in config.")
+
 # =============================================================================
 # 2. RESTRICT TO VALIDATION WINDOW
 # =============================================================================
