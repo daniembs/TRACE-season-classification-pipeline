@@ -51,6 +51,14 @@ RESPONSE_COL <- "response_variable"
 # label_high  : season label assigned to high driver values.
 # label_mid   : season label for the intermediate bin (k = 3 only).
 #
+# POLARITY RULE — must be consistent within each row:
+#   high_is_dry = TRUE  → label_low  should be the wet/high-resource season
+#                        → label_high should be the dry/low-resource season
+#   high_is_dry = FALSE → label_low  should be the dry/low-resource season
+#                        → label_high should be the wet/high-resource season
+# Inconsistent polarity (e.g. high_is_dry = TRUE but label_high = "Wet") will
+# not cause an error but will produce mislabelled output seasons.
+#
 # Add or remove rows to match your drivers. Names must match CLIMATE_CSV,
 # STD_THRESHOLDS, and SEG_DRIVERS exactly.
 
@@ -159,10 +167,13 @@ S3_FLAG_OMEGA_SQ_LOW <- 0.01
 
 S4_NEAR_CONSTANT_THRESHOLD <- 0.95
 
-SENS_W_CLIMATE_RANGE <- c(0.30, 0.70)
-SENS_W_ROBUST_RANGE  <- c(0.10, 0.40)
-SENS_W_VERIFY_RANGE  <- c(0.10, 0.40)
-SENS_W_STEP          <- 0.10
+SENS_W_CLIMATE_RANGE      <- c(0.30, 0.70)
+SENS_W_ROBUST_RANGE       <- c(0.10, 0.40)
+SENS_W_VERIFY_RANGE       <- c(0.10, 0.40)
+SENS_W_STEP               <- 0.10
+# Fraction of weight combinations in which the top candidate differs from the
+# baseline winner that triggers the "weight_sensitive" quality flag (0–100).
+SENS_W_WINNER_CHANGE_PCT  <- 25
 
 GLOBAL_SEED <- 123
 
@@ -185,4 +196,13 @@ driver_info <- function(drv) {
 }
 
 stopifnot(abs(W_CLIMATE + W_ROBUST + W_VERIFY - 1.0) < 1e-6)
+
+# Validate that every k=3 threshold pair has t1 < t2
+for (.thr in STD_THRESHOLDS) {
+  if (.thr$k == 3 && is.finite(.thr$t1) && is.finite(.thr$t2) && .thr$t1 >= .thr$t2)
+    stop(sprintf(
+      "STD_THRESHOLDS validation: t1 (%.4f) must be < t2 (%.4f) for driver '%s' k=3.",
+      .thr$t1, .thr$t2, .thr$driver))
+}
+rm(.thr)
 # =============================================================================

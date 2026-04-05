@@ -189,6 +189,12 @@ build_candidate <- function(df, driver, k_seasons = 2,
       # positive value (1e-6) prevents the median from collapsing to 0 when
       # >50% of baseline months are zero, while still placing the threshold at
       # effectively 0 for practical classification purposes.
+      # NOTE — zero-jitter asymmetry: k=2 uses zero-jittered xb_q for the
+      # quantile split, but k=3 (high_is_dry branch below) uses raw xb for t1
+      # (median) and restricts t2 to strictly positive values only. This is
+      # intentional: the k=3 design places t1 at the natural zero boundary
+      # rather than the Q_SPLIT_2S percentile, giving a distinct biological
+      # interpretation (Wet = zero-deficit; Transition/Dry = positive deficit).
       xb_q <- if (dm$high_is_dry) ifelse(xb == 0, 1e-6, xb) else xb
       meta$t1 <- suppressWarnings(as.numeric(quantile(xb_q, Q_SPLIT_2S, na.rm = TRUE)))
     }
@@ -430,9 +436,9 @@ saveRDS(screened_tbl,   file.path(output_dir, "screened_tbl.rds"))
 saveRDS(threshold_tbl,  file.path(output_dir, "threshold_tbl.rds"))
 saveRDS(season_long,    file.path(output_dir, "season_long.rds"))
 
-# Session info — saved once here (Stage 1 always runs first) so the full R
-# version, OS, and every loaded package version are recorded alongside outputs.
-# This is the primary reproducibility artefact for the pipeline run.
+# Session info — saved in every stage output directory so that each stage's
+# package environment is independently recorded. Stage 1 always runs first;
+# all subsequent stages also write session_info.txt to their own output_dir.
 writeLines(capture.output(sessionInfo()),
            file.path(output_dir, "session_info.txt"))
 # =============================================================================

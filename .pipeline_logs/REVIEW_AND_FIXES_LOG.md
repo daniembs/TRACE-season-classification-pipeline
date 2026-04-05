@@ -244,6 +244,128 @@ is standard R idiom; no better cross-platform solution without adding a package 
 
 ---
 
+## SESSION 3 — Remaining R1–R14 fixes (v3-corrected)
+
+**Date:** 2026-04-05
+**Branch:** v3-corrected
+**Commit at start:** b3d8464 (first v3 commit)
+**Scope:** All items R1–R14 identified in Session 2 assessment but not yet applied.
+
+---
+
+### R1 — Short-record block stability warning
+**Files:** `STAGE_3_season_validation.R`, `3STAGE/STAGE_2_climate_only_validation.R`
+**Type:** ROBUSTNESS | **Severity:** SIGNIFICANT | **Status:** FIXED (v3-corrected, commit b494a05)
+Year-span warning emitted when ecological/validation window spans < 2×BLOCK_YEARS years.
+
+---
+
+### R2 — Single candidate quality synthesis
+**Files:** `STAGE_4_decision_ranking.R` (S12), `3STAGE/STAGE_3_climate_only_ranking.R` (S8)
+**Type:** ROBUSTNESS | **Severity:** SIGNIFICANT | **Status:** FIXED (v3-corrected)
+Added `n_candidates` check before quality flags block. When n=1, emits "SINGLE CANDIDATE"
+message instead of running misleading ACCEPTABLE/CAUTION logic on uninformative rank metrics.
+
+---
+
+### R3 — Zero IQR constant driver → Inf in alignment_tbl
+**File:** `STAGE_3_season_validation.R`
+**Type:** BUG | **Severity:** ROBUSTNESS | **Status:** FIXED (v3-corrected)
+`diff1_iqr` and `diff2_iqr` now use `if_else(iqr > 0, ..., NA_real_)` instead of plain
+division. Warning emitted for zero-IQR drivers. Previously produced silent Inf in CSVs.
+
+---
+
+### R4 — Hardcoded pct_not_top > 25
+**Files:** All 4 config files; `STAGE_4_decision_ranking.R`; `3STAGE/STAGE_3_climate_only_ranking.R`
+**Type:** ROBUSTNESS | **Severity:** ROBUSTNESS | **Status:** FIXED (v3-corrected)
+Added `SENS_W_WINNER_CHANGE_PCT <- 25` to all 4 config files (ADVANCED SETTINGS).
+Both scripts now reference this constant instead of the hardcoded literal 25.
+
+---
+
+### R5 — Hardcoded min_ok = 10 in boot_ci()
+**File:** `STAGE_2_ecological_segmentation.R`
+**Type:** ROBUSTNESS | **Severity:** ROBUSTNESS | **Status:** FIXED (v3-corrected)
+Named constant `BOOT_CI_MIN_REPS <- 10L` defined at top of script; used as default arg.
+
+---
+
+### R6 — Hardcoded nrow(test) < 3 in cv_seg_rmse()
+**File:** `STAGE_2_ecological_segmentation.R`
+**Type:** ROBUSTNESS | **Severity:** ROBUSTNESS | **Status:** FIXED (v3-corrected)
+Named constant `CV_MIN_TEST_N <- 3L` defined at top of script; used in cv_seg_rmse().
+
+---
+
+### R7 — Hardcoded z = 1.96 in wilson_ci()
+**Files:** `STAGE_4_decision_ranking.R`, `3STAGE/STAGE_3_climate_only_ranking.R`
+**Type:** ROBUSTNESS | **Severity:** ROBUSTNESS | **Status:** FIXED (v3-corrected)
+`WILSON_Z <- 1.96` constant defined near function definitions; used as default arg.
+
+---
+
+### R8 — No t1 < t2 validation in STD_THRESHOLDS
+**Files:** All 4 config files (DERIVED OBJECTS section)
+**Type:** ROBUSTNESS | **Severity:** SIGNIFICANT | **Status:** FIXED (v3-corrected)
+For-loop over STD_THRESHOLDS added to DERIVED OBJECTS in all configs. Calls `stop()`
+with informative message if any k=3 entry has t1 >= t2.
+
+---
+
+### R9 — No DRIVER_META label-polarity consistency check
+**File:** `config.R` (DRIVER_META comment block only)
+**Type:** DOCUMENTATION | **Severity:** DOCS | **Status:** FIXED (v3-corrected)
+Added POLARITY RULE explanation comment in DRIVER_META definition in config.R.
+No programmatic check (user-defined label strings are unreliable to validate
+automatically without enumerating all valid names).
+
+---
+
+### R10 — kappa_cohen vs kappa_safe naming inconsistency
+**File:** `STAGE_3_season_validation.R`
+**Type:** STYLE | **Severity:** ROBUSTNESS | **Status:** FIXED (v3-corrected)
+Renamed `kappa_cohen` → `kappa_safe` throughout STAGE_3 (function definition + call site).
+STAGE_4 and 3STAGE/STAGE_3 already used `kappa_safe`.
+
+---
+
+### R11 — sessionInfo() only written by STAGE_1
+**Files:** `STAGE_2_ecological_segmentation.R`, `STAGE_3_season_validation.R`,
+           `STAGE_4_decision_ranking.R`, `3STAGE/STAGE_2_climate_only_validation.R`,
+           `3STAGE/STAGE_3_climate_only_ranking.R`
+**Type:** REPRODUCIBILITY | **Severity:** DOCS | **Status:** FIXED (v3-corrected)
+Added `writeLines(capture.output(sessionInfo()), ...)` at end of each script.
+Updated STAGE_1 comment to reflect that all stages now write session_info.txt.
+
+---
+
+### R12 — CITATION.cff structural errors
+**File:** `CITATION.cff`
+**Type:** DOCUMENTATION | **Severity:** DOCS | **Status:** FIXED (v3-corrected)
+- `article-citation` (invalid CFF 1.2.0 key) → `references` with `type: article`
+- Author "C. Reed" / "Sasha" → `family: "Reed"`, `given: "Sasha C."`
+- Author "E. Wood" / "Tana" → `family: "Wood"`, `given: "Tana E."`
+- Repository URL: `usdanfs` → `daniembs` (correct GitHub username)
+
+---
+
+### R13 — README SOP vs PIPELINE_OUTPUTS_GUIDE description unclear
+**File:** `README.md`
+**Type:** DOCUMENTATION | **Severity:** DOCS | **Status:** FIXED (v3-corrected)
+Rewrote both descriptions to distinguish purpose: SOP = procedural setup guide;
+PIPELINE_OUTPUTS_GUIDE = post-run interpretation reference.
+
+---
+
+### R14 — Zero-jitter asymmetry undocumented (k=2 vs k=3)
+**Files:** `STAGE_1_season_candidates.R`, `3STAGE/STAGE_1_climate_only_candidates.R`
+**Type:** DOCUMENTATION | **Severity:** DOCS | **Status:** FIXED (v3-corrected)
+Added explanation comment at the k=2 zero-jitter block (and cross-reference in
+3STAGE/STAGE_1) documenting why k=2 uses jittered xb_q while k=3 uses raw xb.
+
+---
+
 ## BRANCH / COMMIT REFERENCE
 
 | Branch | Content |

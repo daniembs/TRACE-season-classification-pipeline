@@ -72,9 +72,10 @@ S2_MIN_BLOCK_PROP     <- 0.05
 S2_MIN_HEALTHY_BLOCKS <- 0.50
 S2_BLOCK_YEARS        <- 2
 
-SENS_W_CLIMATE_RANGE <- c(0.40, 0.80)
-SENS_W_ROBUST_RANGE  <- c(0.20, 0.60)
-SENS_W_STEP          <- 0.10
+SENS_W_CLIMATE_RANGE      <- c(0.40, 0.80)
+SENS_W_ROBUST_RANGE       <- c(0.20, 0.60)
+SENS_W_STEP               <- 0.10
+SENS_W_WINNER_CHANGE_PCT  <- 25
 
 Q_HID_T2 <- 0.66
 
@@ -98,4 +99,12 @@ driver_info <- function(drv) {
 }
 
 stopifnot(abs(W_CLIMATE + W_ROBUST - 1.0) < 1e-6)
+
+for (.thr in STD_THRESHOLDS) {
+  if (.thr$k == 3 && is.finite(.thr$t1) && is.finite(.thr$t2) && .thr$t1 >= .thr$t2)
+    stop(sprintf(
+      "STD_THRESHOLDS validation: t1 (%.4f) must be < t2 (%.4f) for driver '%s' k=3.",
+      .thr$t1, .thr$t2, .thr$driver))
+}
+rm(.thr)
 # =============================================================================

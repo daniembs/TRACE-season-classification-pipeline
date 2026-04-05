@@ -109,8 +109,11 @@ kappa_safe <- function(tab) {
   (po - pe) / (1 - pe)
 }
 
+# z for 95% two-sided Wilson CI (qnorm(0.975)); named so it can be traced easily
+WILSON_Z <- 1.96
+
 # Wilson score interval for discord proportion
-wilson_ci <- function(m, n, z = 1.96) {
+wilson_ci <- function(m, n, z = WILSON_Z) {
   if (!is.finite(n) || n <= 0) return(c(lo = NA_real_, hi = NA_real_))
   p <- m / n
   denom  <- 1 + z^2 / n
@@ -583,8 +586,18 @@ saveRDS(boot_ranks,    file.path(output_dir, "boot_ranks.rds"))
 # Thresholds below are conservative starting points, not hard pass/fail rules.
 # See PIPELINE_OUTPUTS_GUIDE.md for full interpretation of each signal.
 
+n_candidates  <- nrow(decision_table_final)
 winner_row    <- decision_table_final %>% slice(1)
 quality_flags <- character(0)
+
+# --- Single-candidate short-circuit ---
+if (n_candidates == 1L) {
+  message(
+    "\nResult quality: SINGLE CANDIDATE — only one candidate survived all screening stages. ",
+    "Bootstrap rank stability (p_top1, rank_IQR) and scoring metrics are uninformative with ",
+    "a single candidate. Evaluate the season definition on scientific grounds. ",
+    "Review filter_results.csv to understand why all other candidates were dropped.")
+} else {
 
 # --- Rank stability ---
 if (is.finite(winner_row$p_top1) && winner_row$p_top1 < 0.50)
@@ -636,7 +649,7 @@ if (is.finite(winner_omega) && winner_omega < S3_FLAG_OMEGA_SQ_LOW)
 n_weight_winners <- n_distinct(weight_sensitivity$top_candidate)
 if (n_weight_winners > 1) {
   pct_not_top <- mean(weight_sensitivity$top_candidate != winner_row$candidate_id) * 100
-  if (pct_not_top > 25)
+  if (pct_not_top > SENS_W_WINNER_CHANGE_PCT)
     quality_flags["weight_sensitive"] <- sprintf(
       "Winner changes in %.0f%% of weight combinations. The result is sensitive to tier weight choice. Review weight_sensitivity.csv.",
       pct_not_top)
@@ -653,4 +666,8 @@ if (length(quality_flags) == 0) {
     message("  [", nm, "] ", quality_flags[[nm]])
   message("\nSee PIPELINE_OUTPUTS_GUIDE.md for interpretation guidance.")
 }
+} # end single-candidate else block
+
+writeLines(capture.output(sessionInfo()),
+           file.path(output_dir, "session_info.txt"))
 # =============================================================================

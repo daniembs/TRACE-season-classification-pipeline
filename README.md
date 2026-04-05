@@ -51,8 +51,8 @@ Scripts for this pipeline are in the `3STAGE/` subfolder.
 - `FINAL_season_assignment.R`
 
 ### General documentation
-- `SOP_Pipeline.docx` — full standard operating procedure
-- `PIPELINE_OUTPUTS_GUIDE.md` — interpretation guide for all output columns and diagnostic files; read this after your first run
+- `SOP_Pipeline.docx` — step-by-step procedural guide: how to set up your data, fill in `config.R`, run the stages in order, and check outputs. Start here for a new study.
+- `PIPELINE_OUTPUTS_GUIDE.md` — reference guide for interpreting every output column and CSV file (benchmarks, flag meanings, climate-only differences). Read this after your first run to understand what the numbers mean.
 
 ## Input requirements
 

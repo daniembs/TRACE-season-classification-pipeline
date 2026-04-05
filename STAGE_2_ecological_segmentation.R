@@ -50,6 +50,10 @@ tab_dir     <- file.path(output_dir, "tables")
 seg_drivers <- as_tibble(SEG_DRIVERS)
 dir.create(tab_dir, showWarnings = FALSE, recursive = TRUE)
 
+# Internal algorithm constants — change only with care (see comments)
+BOOT_CI_MIN_REPS <- 10L  # min bootstrap replicates required for a CI to be reported
+CV_MIN_TEST_N    <- 3L   # min observations in a leave-one-year-out test fold
+
 # =============================================================================
 # 1. DATA INPUTS — load the ecological response and join with climate record
 # =============================================================================
@@ -161,7 +165,7 @@ jitter_if_tied <- function(x, frac = 1e-6) {
 # method is preferred over SE-based intervals here because the bootstrap
 # distribution of breakpoints is often asymmetric; min_ok = 10 ensures
 # the CI is not reported when the bootstrap produced too few valid replicates.
-boot_ci <- function(x, min_ok = 10) {
+boot_ci <- function(x, min_ok = BOOT_CI_MIN_REPS) {
   if (length(x) >= min_ok)
     c(median(x), quantile(x, 0.025), quantile(x, 0.975))
   else
@@ -323,7 +327,7 @@ cv_seg_rmse <- function(df, xvar, k_breaks) {
   rmses <- map_dbl(years, function(yr) {
     train <- df %>% filter(Year != yr)
     test  <- df %>% filter(Year == yr)
-    if (nrow(test) < 3 || nrow(train) < MIN_MONTHS_FOR_SEG) return(NA_real_)
+    if (nrow(test) < CV_MIN_TEST_N || nrow(train) < MIN_MONTHS_FOR_SEG) return(NA_real_)
     fit <- if (k_breaks == 1) fit_seg1(train, xvar, B = 0)
     else               fit_seg2(train, xvar, B = 0)
     breaks <- c(fit$b1, fit$b2)[is.finite(c(fit$b1, fit$b2))]
@@ -454,4 +458,7 @@ write.csv(ecological_regime_long %>%
 saveRDS(ecological_regime_long, file.path(output_dir, "ecological_regime_long_seg.rds"))
 saveRDS(seg_tbl,          file.path(output_dir, "seg_tbl.rds"))
 saveRDS(monthly_response,     file.path(output_dir, "monthly_response.rds"))
+
+writeLines(capture.output(sessionInfo()),
+           file.path(output_dir, "session_info.txt"))
 # =============================================================================

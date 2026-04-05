@@ -148,7 +148,7 @@ make_year_blocks <- function(dates, block_years = 2) {
 # Squarifies the table over the union of row/column labels before computing,
 # so non-square tables (divergent label sets) are handled correctly rather than
 # silently computing diag() on the shorter diagonal.
-kappa_cohen <- function(tab) {
+kappa_safe <- function(tab) {
   tab <- as.matrix(tab)
   n   <- sum(tab)
   if (!is.finite(n) || n == 0) return(NA_real_)
@@ -291,7 +291,7 @@ agreement_tbl <- stage1_long %>%
           by = "DateMonth")
       lv <- union(levels(d$s1), levels(d$s2))
       tab <- table(factor(d$s1, levels = lv), factor(d$s2, levels = lv))
-      tibble(n_months_overlap = sum(tab), kappa = kappa_cohen(tab))
+      tibble(n_months_overlap = sum(tab), kappa = kappa_safe(tab))
     })) %>%
   unnest(metrics)
 
@@ -307,6 +307,15 @@ driver_scale <- monthly_clim %>%
   pivot_longer(-DateMonth, names_to = "driver", values_to = "x") %>%
   summarise(iqr = IQR(x, na.rm = TRUE), .by = driver)
 
+# Warn for constant drivers (IQR = 0): IQR-normalised distance is undefined
+# and would produce Inf. diff1_iqr/diff2_iqr are set to NA_real_ for these.
+zero_iqr_drivers <- driver_scale %>% filter(iqr == 0) %>% pull(driver)
+if (length(zero_iqr_drivers) > 0)
+  warning(sprintf(
+    "Driver(s) with zero IQR (constant over the climate window): %s. ",
+    paste(zero_iqr_drivers, collapse = ", ")),
+    "IQR-normalised alignment distances (diff1_iqr, diff2_iqr) will be NA for these drivers.")
+
 alignment_tbl <- threshold_tbl %>%
   dplyr::select(candidate_id, driver, k, method, t1, t2) %>%
   inner_join(stage2_breaks, by = c("driver", "k")) %>%
@@ -314,8 +323,9 @@ alignment_tbl <- threshold_tbl %>%
   mutate(
     abs_diff_1 = abs(b1 - t1),
     abs_diff_2 = if_else(k == 3, abs(b2 - t2), NA_real_),
-    diff1_iqr  = abs_diff_1 / iqr,
-    diff2_iqr  = if_else(k == 3, abs_diff_2 / iqr, NA_real_))
+    # Use NA rather than Inf when driver is constant (iqr == 0)
+    diff1_iqr  = if_else(iqr > 0, abs_diff_1 / iqr, NA_real_),
+    diff2_iqr  = if_else(k == 3 & iqr > 0, abs_diff_2 / iqr, NA_real_))
 
 # =============================================================================
 # 8. DROP-RULE APPLICATION — reject structurally pathological candidates;
@@ -487,4 +497,7 @@ write.csv(stage1_vs_stage2 %>%
           row.names = FALSE)
 
 saveRDS(retained, file.path(output_dir, "stage3_stage1_candidates_retained.rds"))
+
+writeLines(capture.output(sessionInfo()),
+           file.path(output_dir, "session_info.txt"))
 # =============================================================================

@@ -131,6 +131,14 @@ build_candidate <- function(df, driver, k_seasons = 2, method = c("std", "quanti
     if (length(xb) < 24) {
       meta$t1 <- NA_real_
     } else {
+      # For high_is_dry drivers (e.g. CWD), exact zeros represent "no deficit"
+      # and cluster at the floor of the distribution. Replacing 0 with 1e-6
+      # prevents the median collapsing to 0 when >50% of months are zero.
+      # NOTE — zero-jitter asymmetry: k=2 uses zero-jittered xb_q for the
+      # quantile split, but k=3 (high_is_dry branch below) uses raw xb for t1.
+      # This is intentional: the k=3 design places t1 at the natural zero
+      # boundary, giving a distinct biological interpretation (Wet = zero-deficit;
+      # Transition/Dry = positive deficit). See main STAGE_1 for full rationale.
       xb_q <- if (dm$high_is_dry) ifelse(xb == 0, 1e-6, xb) else xb
       meta$t1 <- suppressWarnings(as.numeric(quantile(xb_q, Q_SPLIT_2S, na.rm = TRUE)))
     }

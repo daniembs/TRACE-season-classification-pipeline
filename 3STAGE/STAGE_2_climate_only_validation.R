@@ -241,4 +241,7 @@ write.csv(retained %>%
 saveRDS(block_stability, file.path(output_dir, "block_stability.rds"))
 saveRDS(filters_tbl,     file.path(output_dir, "filters_tbl.rds"))
 saveRDS(retained,        file.path(output_dir, "stage2_stage1_candidates_retained.rds"))
+
+writeLines(capture.output(sessionInfo()),
+           file.path(output_dir, "session_info.txt"))
 # =============================================================================
