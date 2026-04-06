@@ -16,7 +16,7 @@ are unfavourable simultaneously, treat the winning season definition as
 | Signal | Favourable | Caution | Investigate |
 |--------|-----------|---------|-------------|
 | `p_top1` | ≥ 0.60 | 0.40 – 0.59 | < 0.40 |
-| `bsa_min_std_quant` | ≥ 0.60 | 0.40 – 0.59 | < 0.40 |
+| `bsa_min_std_quant` | ≥ 0.70 | 0.50 – 0.69 | < 0.50 |
 | `bsa_min_ssa` | ≥ 0.60 | 0.40 – 0.59 | < 0.30 |
 | `breakpoint_supported` | TRUE for ≥ 1 driver | — | FALSE for all drivers |
 | `omega_sq` (winner) | ≥ 0.06 | 0.01 – 0.06 | < 0.01 |
@@ -265,6 +265,22 @@ of the segmented model on held-out years. There is no universal benchmark
 comparatively: if `rmse_cv` for k=3 is not substantially lower than for k=2,
 the additional breakpoint does not improve prediction.
 
+### Bootstrap breakpoint CI (`b1_lo`, `b1_hi`, `b2_lo`, `b2_hi`)
+2.5th and 97.5th percentile of the breakpoint estimate across B = 300
+case-resampling bootstrap replicates. Quantifies uncertainty in the breakpoint
+location without relying on asymptotic normality (which is violated near
+boundary values of the driver range).
+
+**Interpretation:**
+- Narrow CI (width < 0.5 × IQR of the driver) — the breakpoint location is
+  well-determined by the data.
+- Wide CI spanning a large fraction of the driver range — the breakpoint is
+  poorly constrained; the segmented model fits many plausible locations equally
+  well. This reduces confidence in the threshold–breakpoint alignment diagnostic
+  (`diff1_iqr`/`diff2_iqr`) even if the breakpoint is nominally supported.
+- `NA` — fewer than `BOOT_CI_MIN_REPS` (default 10) bootstrap replicates
+  produced a valid breakpoint estimate; CI is not reported.
+
 ---
 
 ## filter_results.csv
@@ -285,6 +301,13 @@ The threshold places almost all ecological-window months in one season. For
 your site's driver values — inspect `thresholds.csv` and compare to the actual
 driver distribution. For `quantile` candidates: the baseline period may be
 climatologically unrepresentative of the ecological window.
+
+Note: Stage-1 also applies an **absolute count screen** (`min_bin_n`) before
+candidates reach Stage-3. Defaults: < **24 months** for k=2; < **18 months**
+for k=3 (config params `S1_MIN_BIN_N_2S` / `S1_MIN_BIN_N_3S`). Candidates
+that pass the Stage-1 absolute screen but fail the Stage-3 proportional screen
+(`fail_imbalance`) typically have adequate absolute counts but unbalanced
+partitions within the shorter ecological window.
 
 **`fail_calendar`** (mean monthly consistency < `S3_MEAN_MONTH_CONS`): Season
 labels flip between years for the same calendar month, meaning the threshold
@@ -307,6 +330,59 @@ The most productive diagnostic path:
 2. Reduce `S3_MIN_SEASON_PROP` if imbalance is the issue.
 3. Check that the ecological window (response record dates) overlaps the
    climate record for at least 5 years.
+
+---
+
+## Stage-3 diagnostic flags (anova_summary.csv / retained_candidates.csv)
+
+The following columns are written to `anova_summary.csv` and carried forward into
+`retained_candidates.csv`. They are informational only — none triggers a drop.
+
+### `flag_kappa_low`
+TRUE when Cohen's κ (Stage-1 threshold labels vs. Stage-2 breakpoint labels) is below
+`S3_FLAG_KAPPA_LOW` (default **0.10**). This corresponds to the "slight agreement"
+range on the Landis & Koch scale and indicates that climate-derived and ecologically-
+derived labels have negligible correspondence beyond chance.
+
+`flag_kappa_low = TRUE` does not eliminate a candidate, but combined with
+`bsa_min_ssa < 0.30` and `flag_align_far = TRUE` it is a strong signal that the
+climate threshold and ecological breakpoint describe different boundaries on the
+driver axis. The Stage-4 `kappa_ssa` column carries this same κ into the final
+decision table for cross-reference.
+
+### `flag_align_far`
+TRUE when the IQR-normalised distance between the Stage-1 threshold and the Stage-2
+breakpoint exceeds `S3_FLAG_ALIGN_IQR` (default **1.5 IQR**). This is the standard
+Tukey outer fence applied to positional discrepancy: a gap larger than 1.5 × IQR of
+the driver distribution is flagged as unusually large.
+
+`diff1_iqr` (t1 vs. b1) and `diff2_iqr` (t2 vs. b2 for k=3) store the raw values.
+`flag_align_far` is TRUE if either exceeds the threshold. NA values (from zero-IQR
+constant drivers) are treated as non-flagged.
+
+### `kw_p`
+Kruskal-Wallis test p-value for differences in the ecological response across season
+levels. A distribution-free complement to the parametric ANOVA, robust to non-normality
+and unequal variances. Reported alongside `omega_sq` for each candidate.
+
+- p < 0.05 — evidence of a rank-based difference across seasons.
+- p ≥ 0.05 with low `omega_sq` — the ecological response does not differentiate seasons
+  either parametrically or non-parametrically; interpret with caution.
+
+`kw_p` is DIAGNOSTIC only and does not enter scoring or trigger flags.
+
+### Tukey HSD pairwise comparisons (`posthoc_tbl` / `anova_summary.csv`)
+For k=3 candidates where TukeyHSD can be computed, pairwise season comparisons are
+written with columns `comparison`, `diff`, `lwr`, `upr`, `p_adj`. These show the
+direction and magnitude of between-season differences in the ecological response.
+
+- `diff` — mean response difference (season A minus season B).
+- `lwr` / `upr` — 95% simultaneous confidence interval.
+- `p_adj` — Tukey-adjusted p-value.
+
+Use these to confirm that all three seasons are ecologically distinct (all pairwise
+`p_adj < 0.05`), or to identify which pairs drive the omnibus ANOVA signal. Not
+computed for k=2 (only one pair; use `anova_p` directly).
 
 ---
 
@@ -398,11 +474,17 @@ This is a supplementary balance diagnostic alongside `min_bin_prop`. Unlike `min
 (which captures only the smallest bin), `entropy_norm` summarises the overall spread.
 No hard threshold is applied — use it to compare candidate balance qualitatively.
 
-### `med_run` (in validation_tbl.csv)
-Median run length: the median number of consecutive months assigned to the same season
-label. Higher values mean longer unbroken seasonal stretches, which is biologically
-more plausible. Very short median runs (≤ 2 months) indicate the threshold lies in a
-region of high driver density where labels switch rapidly from month to month.
+### `med_run`
+**File:** `output_STAGE_1/tables/validation_tbl.csv`
+
+Median length (in consecutive months) of same-season runs in the full climate record.
+Higher values mean longer unbroken seasonal stretches, which is biologically more
+plausible. Very short median runs (≤ 2 months) indicate the threshold lies in a region
+of high driver density where labels switch rapidly from month to month.
+
+`med_run` is a Stage-1 DIAGNOSTIC and does not enter screening or scoring. Use it
+alongside `mean_switch_per_year` to assess temporal coherence: high switching rate and
+low median run length together indicate a fragmented, threshold-sensitive candidate.
 
 ---
 
